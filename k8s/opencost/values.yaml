@@ -1,0 +1,33 @@
+# Local-only OpenCost 2.2.7 values. Cost data is advisory and ephemeral.
+opencost:
+  exporter:
+    defaultClusterId: cloudward-local
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  prometheus:
+    internal:
+      enabled: false
+    external:
+      enabled: true
+      url: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+  ui:
+    enabled: false
+
+service:
+  type: ClusterIP
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9003"
+
+serviceMonitor:
+  enabled: true
+  additionalLabels:
+    app.kubernetes.io/part-of: cloudward
+
+networkPolicies:
+  enabled: false

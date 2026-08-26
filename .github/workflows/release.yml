@@ -1,0 +1,186 @@
+name: Release signed demo image
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudward-release-main
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Scan, publish, sign, and update staging
+    needs: quality
+    if: >-
+      always() &&
+      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+       (github.event_name == 'workflow_dispatch' && needs.quality.result == 'success'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3.11.1
+      - uses: sigstore/cosign-installer@v3.10.0
+        with:
+          cosign-release: v2.5.3
+      - name: Define immutable release coordinates
+        id: coordinates
+        shell: bash
+        run: |
+          source_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cloudward-demo-api"
+          tag="sha-${source_sha}"
+          printf 'source_sha=%s\n' "$source_sha" >>"$GITHUB_OUTPUT"
+          printf 'image=%s\n' "$image" >>"$GITHUB_OUTPUT"
+          printf 'tag=%s\n' "$tag" >>"$GITHUB_OUTPUT"
+      - name: Build local release candidate
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: demo-services/api
+          file: demo-services/api/Dockerfile
+          load: true
+          push: false
+          tags: ${{ steps.coordinates.outputs.image }}:${{ steps.coordinates.outputs.tag }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Trivy image vulnerability gate
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: image
+          image-ref: ${{ steps.coordinates.outputs.image }}:${{ steps.coordinates.outputs.tag }}
+          trivy-config: trivy.yaml
+          format: table
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
+      - name: Generate CycloneDX SBOM before publication
+        uses: anchore/sbom-action@v0.20.6
+        with:
+          image: ${{ steps.coordinates.outputs.image }}:${{ steps.coordinates.outputs.tag }}
+          format: cyclonedx-json
+          output-file: cloudward-demo-api.cdx.json
+          upload-artifact: false
+      - uses: docker/login-action@v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish only the scanned candidate and capture its digest
+        id: publish
+        env:
+          IMAGE: ${{ steps.coordinates.outputs.image }}
+          TAG: ${{ steps.coordinates.outputs.tag }}
+        run: |
+          docker push "$IMAGE:$TAG"
+          digest="$(docker buildx imagetools inspect "$IMAGE:$TAG" \
+            --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'digest=%s\n' "$digest" >>"$GITHUB_OUTPUT"
+          printf 'reference=%s@%s\n' "$IMAGE" "$digest" >>"$GITHUB_OUTPUT"
+      - name: Keyless sign and attest the immutable digest
+        env:
+          IMAGE_REFERENCE: ${{ steps.publish.outputs.reference }}
+        run: |
+          cosign sign --yes "$IMAGE_REFERENCE"
+          cosign attest --yes \
+            --type cyclonedx \
+            --predicate cloudward-demo-api.cdx.json \
+            "$IMAGE_REFERENCE"
+          cosign verify \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$IMAGE_REFERENCE" >/dev/null
+          cosign verify-attestation \
+            --type cyclonedx \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$IMAGE_REFERENCE" >/dev/null
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: cloudward-demo-api-${{ steps.coordinates.outputs.source_sha }}-cyclonedx
+          path: cloudward-demo-api.cdx.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Mint repository-scoped GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2.1.1
+        with:
+          app-id: ${{ secrets.CLOUDWARD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.CLOUDWARD_GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: cloudward-gitops
+      - uses: actions/checkout@v4.2.2
+        with:
+          repository: ${{ github.repository_owner }}/cloudward-gitops
+          ref: main
+          path: gitops
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Install pinned yq
+        env:
+          YQ_VERSION: v4.47.2
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+            --output "$RUNNER_TEMP/yq"
+          curl --fail --silent --show-error --location \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums" \
+            --output "$RUNNER_TEMP/yq-checksums"
+          expected="$(awk '$2 == "yq_linux_amd64" {print $1}' "$RUNNER_TEMP/yq-checksums")"
+          printf '%s  %s\n' "$expected" "$RUNNER_TEMP/yq" | sha256sum --check --status
+          install -m 0755 "$RUNNER_TEMP/yq" "$RUNNER_TEMP/bin-yq"
+          printf '%s\n' "$RUNNER_TEMP" >>"$GITHUB_PATH"
+          mv "$RUNNER_TEMP/bin-yq" "$RUNNER_TEMP/yq"
+      - name: Update staging desired state by digest
+        env:
+          IMAGE: ${{ steps.coordinates.outputs.image }}
+          DIGEST: ${{ steps.publish.outputs.digest }}
+          SBOM: ${{ steps.publish.outputs.reference }}#attestation=cyclonedx
+          SOURCE_SHA: ${{ steps.coordinates.outputs.source_sha }}
+        run: |
+          scripts/gitops/update-release.sh \
+            gitops/cloudward-gitops/environments/staging/values.yaml \
+            staging "$IMAGE" "$DIGEST" "$SOURCE_SHA" "$SBOM" passed pending
+          git -C gitops config user.name cloudward-release-app
+          git -C gitops config user.email cloudward-release-app@users.noreply.github.com
+          git -C gitops add cloudward-gitops/environments/staging/values.yaml
+          if git -C gitops diff --cached --quiet; then
+            printf 'Staging already references %s\n' "$DIGEST"
+            exit 0
+          fi
+          git -C gitops commit -m "Promote CloudWard ${SOURCE_SHA} to staging by digest"
+          git -C gitops pull --rebase origin main
+          git -C gitops push origin HEAD:main
+      - name: Release summary
+        env:
+          REFERENCE: ${{ steps.publish.outputs.reference }}
+          SOURCE_SHA: ${{ steps.coordinates.outputs.source_sha }}
+        run: |
+          printf '### Signed CloudWard release\n\n' >>"$GITHUB_STEP_SUMMARY"
+          printf -- '- Image: `%s`\n' "$REFERENCE" >>"$GITHUB_STEP_SUMMARY"
+          printf -- '- Source: `%s`\n' "$SOURCE_SHA" >>"$GITHUB_STEP_SUMMARY"
+          printf -- '- Trivy gate: passed\n' >>"$GITHUB_STEP_SUMMARY"
+          printf -- '- SBOM: CycloneDX attestation and workflow artifact\n' >>"$GITHUB_STEP_SUMMARY"
+          printf -- '- Staging validation: pending\n' >>"$GITHUB_STEP_SUMMARY"

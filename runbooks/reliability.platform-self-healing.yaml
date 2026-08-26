@@ -1,0 +1,26 @@
+id: reliability.platform-self-healing
+version: 1
+environments: [staging]
+match:
+  incident_type: reliability.platform-self-healing
+  conditions: [workload_disrupted, controller_reconciled]
+evidence:
+  required:
+    - kubernetes_state
+    - kubernetes_event
+    - readiness
+    - health_check
+preconditions:
+  max_target_pods: 10
+  controller_managed: true
+action:
+  type: NO_ACTION
+verify:
+  timeout: 180s
+  conditions:
+    - replacement_pod_observed
+    - ready_replicas_restored
+    - synthetic_request_passes
+    - resolution_source_platform_self_healing
+rollback:
+  enabled: false

@@ -1,0 +1,294 @@
+name: cloudward
+
+x-api-environment: &api-environment
+  APP_ENV: development
+  APP_NAME: CloudWard API
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: postgresql+asyncpg://cloudward:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/cloudward
+  REDIS_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+  OPA_URL: http://opa:8181
+  OPA_DECISION_PATH: /v1/data/cloudward/remediation/decision
+  OPA_CHAOS_DECISION_PATH: ${OPA_CHAOS_DECISION_PATH:-/v1/data/cloudward/chaos/decision}
+  RUNBOOKS_PATH: /app/runbooks
+  KUBECONFIG: /app/.k3d/cloudward-kubeconfig.yaml
+  KUBERNETES_CONTEXT: k3d-cloudward
+  KUBERNETES_ALLOWED_NAMESPACES: cloudward-staging
+  FRONTEND_URL: http://localhost:${CLOUDWARD_PORT:-8080}
+  CORS_ORIGINS: http://localhost:${CLOUDWARD_PORT:-8080}
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-replace-me}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-replace-me}
+  GITHUB_REDIRECT_URI: http://localhost:${CLOUDWARD_PORT:-8080}/api/v1/auth/github/callback
+  SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+  DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-true}
+  ALERTMANAGER_WEBHOOK_TOKEN: ${ALERTMANAGER_WEBHOOK_TOKEN:-cloudward-local-alert-token-32-chars-minimum}
+  WORKER_INTERNAL_TOKEN: ${WORKER_INTERNAL_TOKEN:-cloudward-local-worker-token-32-chars-minimum}
+  PROMETHEUS_URL: ${PROMETHEUS_URL:-http://host.docker.internal:9090}
+  LOKI_URL: ${LOKI_URL:-http://host.docker.internal:3100}
+  TEMPO_URL: ${TEMPO_URL:-http://host.docker.internal:3200}
+  TELEMETRY_TIMEOUT_SECONDS: ${TELEMETRY_TIMEOUT_SECONDS:-5}
+  TELEMETRY_MAX_SAMPLES: ${TELEMETRY_MAX_SAMPLES:-200}
+  EVIDENCE_BEFORE_SECONDS: ${EVIDENCE_BEFORE_SECONDS:-300}
+  EVIDENCE_AFTER_SECONDS: ${EVIDENCE_AFTER_SECONDS:-300}
+  ALERT_REPLAY_TOLERANCE_SECONDS: ${ALERT_REPLAY_TOLERANCE_SECONDS:-300}
+  INCIDENT_LAB_NAMESPACE: ${INCIDENT_LAB_NAMESPACE:-cloudward-staging}
+  INCIDENT_LAB_REQUIRED_LABEL: ${INCIDENT_LAB_REQUIRED_LABEL:-cloudward.io/demo-target=true}
+  CHAOS_MAX_RUNTIME_SECONDS: ${CHAOS_MAX_RUNTIME_SECONDS:-300}
+  MAX_TEMPORARY_REPLICAS: ${MAX_TEMPORARY_REPLICAS:-5}
+  AUTOMATIC_ROLLBACK_MAX_RISK: ${AUTOMATIC_ROLLBACK_MAX_RISK:-30}
+  LOCAL_GITOPS_WRITE_ENABLED: ${LOCAL_GITOPS_WRITE_ENABLED:-true}
+  LOCAL_GITOPS_REPO_URL: git://host.docker.internal:19418/cloudward-gitops.git
+  LOCAL_GITOPS_TIMEOUT_SECONDS: ${LOCAL_GITOPS_TIMEOUT_SECONDS:-20}
+  TETRAGON_WEBHOOK_SECRET: ${TETRAGON_WEBHOOK_SECRET:-cloudward-local-tetragon-token-32-chars-minimum}
+  TETRAGON_WEBHOOK_MAX_BODY_BYTES: ${TETRAGON_WEBHOOK_MAX_BODY_BYTES:-131072}
+  TETRAGON_WEBHOOK_MAX_EVENTS_PER_MINUTE: ${TETRAGON_WEBHOOK_MAX_EVENTS_PER_MINUTE:-120}
+  TETRAGON_WEBHOOK_MAX_CLOCK_SKEW_SECONDS: ${TETRAGON_WEBHOOK_MAX_CLOCK_SKEW_SECONDS:-300}
+  SECURITY_DEDUP_WINDOW_SECONDS: ${SECURITY_DEDUP_WINDOW_SECONDS:-60}
+  SECURITY_QUARANTINE_VERIFY_TIMEOUT_SECONDS: ${SECURITY_QUARANTINE_VERIFY_TIMEOUT_SECONDS:-30}
+  SECURITY_QUARANTINE_VERIFY_POLL_SECONDS: ${SECURITY_QUARANTINE_VERIFY_POLL_SECONDS:-1}
+  OPENCOST_URL: ${OPENCOST_URL:-http://host.docker.internal:9003}
+  FINOPS_PROVIDER_TIMEOUT_SECONDS: ${FINOPS_PROVIDER_TIMEOUT_SECONDS:-8}
+  FINOPS_MAX_RESPONSE_BYTES: ${FINOPS_MAX_RESPONSE_BYTES:-1048576}
+  FINOPS_MAX_SAMPLES: ${FINOPS_MAX_SAMPLES:-1000}
+  FINOPS_DEMO_OBSERVATION_WINDOW_SECONDS: ${FINOPS_DEMO_OBSERVATION_WINDOW_SECONDS:-1800}
+  FINOPS_DEMO_MINIMUM_WINDOW_SECONDS: ${FINOPS_DEMO_MINIMUM_WINDOW_SECONDS:-900}
+  FINOPS_PRODUCTION_MINIMUM_WINDOW_SECONDS: ${FINOPS_PRODUCTION_MINIMUM_WINDOW_SECONDS:-604800}
+  FINOPS_QUERY_STEP_SECONDS: ${FINOPS_QUERY_STEP_SECONDS:-60}
+  FINOPS_MINIMUM_SAMPLES: ${FINOPS_MINIMUM_SAMPLES:-5}
+  FINOPS_MINIMUM_WINDOW_COVERAGE: ${FINOPS_MINIMUM_WINDOW_COVERAGE:-0.8}
+  FINOPS_CPU_HEADROOM_FACTOR: ${FINOPS_CPU_HEADROOM_FACTOR:-1.5}
+  FINOPS_MEMORY_HEADROOM_FACTOR: ${FINOPS_MEMORY_HEADROOM_FACTOR:-1.35}
+  FINOPS_MINIMUM_CPU_MILLICORES: ${FINOPS_MINIMUM_CPU_MILLICORES:-50}
+  FINOPS_MINIMUM_MEMORY_MIB: ${FINOPS_MINIMUM_MEMORY_MIB:-64}
+  FINOPS_MINIMUM_REDUCTION_PERCENT: ${FINOPS_MINIMUM_REDUCTION_PERCENT:-20}
+  FINOPS_NODE_REQUEST_THRESHOLD: ${FINOPS_NODE_REQUEST_THRESHOLD:-0.45}
+  FINOPS_NODE_USAGE_THRESHOLD: ${FINOPS_NODE_USAGE_THRESHOLD:-0.35}
+  FINOPS_RECOMMENDATION_TTL_SECONDS: ${FINOPS_RECOMMENDATION_TTL_SECONDS:-86400}
+  FINOPS_DEMO_NAMESPACE: cloudward-staging
+  FINOPS_DEMO_DEPLOYMENT: cloudward-demo
+  FINOPS_DEMO_POD_PATTERN: cloudward-demo-.*
+  FINOPS_GITOPS_REPOSITORY: ${FINOPS_GITOPS_REPOSITORY:-biraj49/cloudward-gitops}
+  FINOPS_GITOPS_VALUES_PATH: cloudward-gitops/environments/staging/values.yaml
+  APPROVAL_TTL_SECONDS: ${APPROVAL_TTL_SECONDS:-1800}
+  TEAMS_WORKFLOW_WEBHOOK_URL: ${TEAMS_WORKFLOW_WEBHOOK_URL:-}
+  TEAMS_DASHBOARD_URL: ${TEAMS_DASHBOARD_URL:-http://localhost:8080}
+  NOTIFICATION_TIMEOUT_SECONDS: ${NOTIFICATION_TIMEOUT_SECONDS:-8}
+  NOTIFICATION_MAX_ATTEMPTS: ${NOTIFICATION_MAX_ATTEMPTS:-5}
+  NOTIFICATION_EVENTS: ${NOTIFICATION_EVENTS:-critical_incident_detected,approval_required,security_containment_executed,remediation_failed,incident_escalated,incident_resolved}
+  CLOUDWARD_AI_DIAGNOSIS_ENABLED: ${CLOUDWARD_AI_DIAGNOSIS_ENABLED:-false}
+  CLOUDWARD_LLM_PRIMARY_MODEL: ${CLOUDWARD_LLM_PRIMARY_MODEL:-openai/gpt-5.6-terra}
+  CLOUDWARD_LLM_FALLBACK_MODEL: ${CLOUDWARD_LLM_FALLBACK_MODEL:-google/gemini-3.5-flash-lite}
+  CLOUDWARD_LLM_ESCALATION_MODEL: ${CLOUDWARD_LLM_ESCALATION_MODEL:-openai/gpt-5.6-sol}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_TIMEOUT_SECONDS: ${OPENROUTER_TIMEOUT_SECONDS:-30}
+  OPENROUTER_MAX_RETRIES: ${OPENROUTER_MAX_RETRIES:-2}
+  OPENROUTER_MAX_CONTEXT_TOKENS: ${OPENROUTER_MAX_CONTEXT_TOKENS:-16000}
+  AI_MAX_EVIDENCE_CHARS: ${AI_MAX_EVIDENCE_CHARS:-60000}
+  AI_MAX_MODEL_CALLS_PER_INCIDENT: ${AI_MAX_MODEL_CALLS_PER_INCIDENT:-3}
+  AI_CIRCUIT_BREAKER_FAILURE_THRESHOLD: ${AI_CIRCUIT_BREAKER_FAILURE_THRESHOLD:-5}
+  AI_CIRCUIT_BREAKER_WINDOW_SECONDS: ${AI_CIRCUIT_BREAKER_WINDOW_SECONDS:-300}
+  GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+  GITHUB_APP_INSTALLATION_ID: ${GITHUB_APP_INSTALLATION_ID:-}
+  GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+  GITHUB_APP_READ_REPOSITORIES: ${GITHUB_APP_READ_REPOSITORIES:-}
+  GITHUB_APP_ISSUE_REPOSITORIES: ${GITHUB_APP_ISSUE_REPOSITORIES:-}
+  GITHUB_APP_WRITE_ALLOWLIST: ${GITHUB_APP_WRITE_ALLOWLIST:-{}}
+
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx.Dockerfile
+    image: cloudward-nginx:local
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${CLOUDWARD_PORT:-8080}:8080"
+    networks:
+      - edge
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m,uid=101,gid=101
+      - /var/run:size=1m,uid=101,gid=101
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_DEV_LOGIN_ENABLED: "true"
+    image: cloudward-frontend:local
+    restart: unless-stopped
+    expose:
+      - "8080"
+    networks:
+      - edge
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m,uid=101,gid=101
+      - /var/run:size=1m,uid=101,gid=101
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    image: cloudward-api:local
+    restart: unless-stopped
+    command:
+      - /bin/sh
+      - -ec
+      - alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
+    environment: *api-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      opa:
+        condition: service_healthy
+    expose:
+      - "8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./runbooks:/app/runbooks:ro
+      - ./.k3d:/app/.k3d:ro
+    networks:
+      - edge
+      - control
+      - data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,uid=10001,gid=10001
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    image: cloudward-worker:local
+    restart: unless-stopped
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      WORKER_INTERNAL_TOKEN: ${WORKER_INTERNAL_TOKEN:-cloudward-local-worker-token-32-chars-minimum}
+      CLOUDWARD_INTERNAL_API_URL: http://api:8000/api/v1/internal
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - data
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,uid=10001,gid=10001
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "celery", "-A", "worker.celery_app:celery_app", "inspect", "ping", "--destination", "celery@cloudward-worker", "--timeout", "5"]
+      interval: 20s
+      timeout: 8s
+      start_period: 15s
+      retries: 3
+
+  postgres:
+    image: postgres:18.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cloudward
+      POSTGRES_USER: cloudward
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    expose:
+      - "5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - data
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudward -d cloudward"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8.10.0-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1", "--loglevel", "warning"]
+    expose:
+      - "6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  opa:
+    image: openpolicyagent/opa:1.19.0
+    restart: unless-stopped
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "--log-format=json", "/policies"]
+    expose:
+      - "8181"
+    volumes:
+      - ./policies/opa:/policies:ro
+    networks:
+      - control
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/opa", "eval", "1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+networks:
+  edge:
+  control:
+    internal: true
+  data:
+    internal: true
+
+volumes:
+  postgres-data:
+  redis-data:

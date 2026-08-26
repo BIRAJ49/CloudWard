@@ -1,0 +1,132 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cloudward-reliability
+  labels:
+    app.kubernetes.io/part-of: cloudward
+spec:
+  groups:
+    - name: cloudward.demo.reliability
+      interval: 15s
+      rules:
+        - alert: HighHTTPErrorRate
+          expr: |
+            (
+              sum by (namespace, service, environment) (
+                rate(cloudward_demo_http_requests_total{status_code=~"5.."}[1m])
+              )
+              /
+              clamp_min(
+                sum by (namespace, service, environment) (
+                  rate(cloudward_demo_http_requests_total[1m])
+                ),
+                0.01
+              )
+            ) > 0.20
+            and on (namespace, service, environment)
+            sum by (namespace, service, environment) (
+              rate(cloudward_demo_http_requests_total[1m])
+            ) > 0.20
+          for: 1m
+          labels:
+            severity: critical
+            category: reliability
+            cloudward_scope: reliability
+            cloudward_notify: "true"
+            runbook_id: reliability.bad-deployment
+          annotations:
+            summary: Sustained HTTP 5xx rate on the CloudWard demo service
+            description: More than 20% of a non-trivial request stream has returned 5xx for one minute.
+            production_note: Production thresholds require a longer window, traffic floor, and SLO-derived burn-rate policy.
+
+        - alert: HighCPUSaturation
+          expr: |
+            (
+              sum by (namespace, pod) (
+                rate(container_cpu_usage_seconds_total{
+                  namespace="cloudward-staging",
+                  container!="",
+                  image!=""
+                }[2m])
+              )
+              /
+              clamp_min(
+                sum by (namespace, pod) (
+                  kube_pod_container_resource_requests{
+                    namespace="cloudward-staging",
+                    resource="cpu",
+                    unit="core"
+                  }
+                ),
+                0.001
+              )
+            ) > 0.85
+            and on (namespace, pod)
+            kube_pod_labels{
+              namespace="cloudward-staging",
+              label_cloudward_io_demo_target="true"
+            } == 1
+          for: 2m
+          labels:
+            severity: warning
+            category: reliability
+            environment: staging
+            cloudward_scope: reliability
+            cloudward_notify: "true"
+            runbook_id: reliability.cpu-saturation
+          annotations:
+            summary: Demo workload CPU exceeds its requested capacity
+            description: A permitted staging demo pod has used more than 85% of its CPU request for two minutes.
+
+        - alert: ContainerOOMKilled
+          expr: |
+            max by (namespace, pod, container) (
+              kube_pod_container_status_last_terminated_reason{
+                namespace="cloudward-staging",
+                reason="OOMKilled"
+              } == 1
+            )
+            and on (namespace, pod, container)
+            increase(kube_pod_container_status_restarts_total{
+              namespace="cloudward-staging"
+            }[5m]) > 0
+            and on (namespace, pod) group_left()
+            kube_pod_labels{
+              namespace="cloudward-staging",
+              label_cloudward_io_demo_target="true"
+            } == 1
+          for: 30s
+          labels:
+            severity: critical
+            category: reliability
+            environment: staging
+            cloudward_scope: reliability
+            cloudward_notify: "true"
+            runbook_id: reliability.memory-pressure
+          annotations:
+            summary: A demo workload container was OOMKilled
+            description: Kubernetes reports an OOMKilled termination and a recent restart on an allowlisted staging target.
+
+        - alert: WorkloadUnavailable
+          expr: |
+            (
+              kube_deployment_spec_replicas{namespace="cloudward-staging"}
+              -
+              kube_deployment_status_replicas_available{namespace="cloudward-staging"}
+            ) > 0
+            and on (namespace, deployment)
+            kube_deployment_labels{
+              namespace="cloudward-staging",
+              label_cloudward_io_demo_target="true"
+            } == 1
+          for: 45s
+          labels:
+            severity: warning
+            category: reliability
+            environment: staging
+            cloudward_scope: reliability
+            cloudward_notify: "true"
+            runbook_id: reliability.platform-self-healing
+          annotations:
+            summary: A demo Deployment has unavailable replicas
+            description: CloudWard should observe Kubernetes reconciliation and attribute platform self-healing without claiming a remediation action.

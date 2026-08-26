@@ -1,0 +1,81 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cloudward-baseline
+policies:
+  - disallow-privileged-containers.yaml
+  - disallow-host-namespaces.yaml
+  - disallow-unsafe-capabilities.yaml
+  - require-demo-target-safety.yaml
+  - require-cloudward-image-digests.yaml
+  - restrict-chaos-targets.yaml
+resources:
+  - test-resources.yaml
+  - chaos-test-resources.yaml
+results:
+  - policy: cloudward-disallow-privileged-containers
+    rule: require-non-privileged
+    resources:
+      - cloudward-staging/compliant-demo
+    kind: Pod
+    result: pass
+  - policy: cloudward-disallow-privileged-containers
+    rule: require-non-privileged
+    resources:
+      - cloudward-staging/privileged-demo
+    kind: Pod
+    result: fail
+  - policy: cloudward-disallow-host-namespaces
+    rule: require-isolated-namespaces
+    resources:
+      - cloudward-staging/host-network-demo
+    kind: Pod
+    result: fail
+  - policy: cloudward-disallow-unsafe-capabilities
+    rule: drop-all-capabilities
+    resources:
+      - cloudward-staging/unsafe-capability-demo
+    kind: Pod
+    result: fail
+  - policy: cloudward-require-demo-target-safety
+    rule: forbid-demo-targets-in-production
+    resources:
+      - cloudward-production/production-demo-target
+    kind: Pod
+    result: fail
+  - policy: cloudward-restrict-chaos-targets
+    rule: require-exact-staging-demo-target
+    resources:
+      - cloudward-staging/allowed-staging-cpu
+    kind: StressChaos
+    result: pass
+  - policy: cloudward-restrict-chaos-targets
+    rule: require-exact-staging-demo-target
+    resources:
+      - cloudward-production/forbidden-production-cpu
+    kind: StressChaos
+    result: fail
+  - policy: cloudward-restrict-chaos-targets
+    rule: require-exact-staging-demo-target
+    resources:
+      - cloudward-staging/forbidden-unlabeled-cpu
+    kind: StressChaos
+    result: fail
+  - policy: cloudward-restrict-chaos-targets
+    rule: require-exact-staging-demo-target
+    resources:
+      - cloudward-staging/forbidden-mixed-namespaces
+    kind: PodChaos
+    result: fail
+  - policy: cloudward-require-image-digests
+    rule: require-sha256-reference
+    resources:
+      - cloudward-staging/cloudward-digest-pinned
+    kind: Pod
+    result: pass
+  - policy: cloudward-require-image-digests
+    rule: require-sha256-reference
+    resources:
+      - cloudward-staging/cloudward-mutable-tag
+    kind: Pod
+    result: fail

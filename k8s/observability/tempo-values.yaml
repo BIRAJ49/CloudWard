@@ -1,0 +1,52 @@
+# Local-only values for grafana-community/tempo 2.2.4.
+fullnameOverride: tempo
+replicas: 1
+
+tempo:
+  reportingEnabled: false
+  memBallastSizeMbs: 0
+  retention: 168h
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+      wal:
+        path: /var/tempo/wal
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+securityContext:
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  runAsNonRoot: true
+
+persistence:
+  enabled: false
+
+service:
+  type: ClusterIP
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  additionalLabels:
+    app.kubernetes.io/part-of: cloudward

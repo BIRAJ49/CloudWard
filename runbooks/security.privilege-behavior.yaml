@@ -1,0 +1,25 @@
+id: security.privilege-related-behavior
+version: 1
+environments:
+  - staging
+match:
+  incident_type: security.privilege_behavior
+  conditions:
+    - controlled_privileged_path_attempt
+evidence:
+  required:
+    - runtime_security_event
+    - cilium_policy_state
+preconditions:
+  max_target_pods: 1
+  controller_managed: true
+action:
+  type: APPLY_QUARANTINE
+verify:
+  timeout: 30s
+  conditions:
+    - cilium_policy_targets_exact_pod
+    - controlled_egress_blocked
+    - pod_health_preserved
+rollback:
+  enabled: true

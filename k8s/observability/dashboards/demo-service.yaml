@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-cloudward-demo-service
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: CloudWard
+data:
+  cloudward-demo-service.json: |
+    {
+      "annotations": {"list": []},
+      "editable": false,
+      "graphTooltip": 1,
+      "links": [],
+      "panels": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "id": 1,
+          "targets": [{"expr": "sum by (service) (rate(cloudward_demo_http_requests_total{namespace=\"$namespace\"}[1m]))", "legendFormat": "{{service}}", "refId": "A"}],
+          "title": "Request rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"max": 1, "min": 0, "unit": "percentunit"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "id": 2,
+          "targets": [{"expr": "sum(rate(cloudward_demo_http_requests_total{namespace=\"$namespace\",status_code=~\"5..\"}[1m])) / clamp_min(sum(rate(cloudward_demo_http_requests_total{namespace=\"$namespace\"}[1m])), 0.01)", "legendFormat": "5xx ratio", "refId": "A"}],
+          "title": "HTTP 5xx ratio",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "description": "The demo histogram includes multi-second buckets so injected slow requests remain distinguishable.",
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "id": 3,
+          "targets": [{"expr": "histogram_quantile(0.95, sum by (le, service) (rate(cloudward_demo_http_request_duration_seconds_bucket{namespace=\"$namespace\"}[5m])))", "legendFormat": "p95 {{service}}", "refId": "A"}],
+          "title": "Request latency p95",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "id": 4,
+          "targets": [{"expr": "sum by (service) (cloudward_demo_http_requests_in_flight{namespace=\"$namespace\"})", "legendFormat": "{{service}}", "refId": "A"}],
+          "title": "Requests in flight",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"mappings": [{"options": {"0": {"color": "red", "text": "Not ready"}, "1": {"color": "green", "text": "Ready"}}, "type": "value"}], "max": 1, "min": 0}, "overrides": []},
+          "gridPos": {"h": 6, "w": 12, "x": 0, "y": 16},
+          "id": 5,
+          "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "targets": [{"expr": "min(cloudward_demo_readiness{namespace=\"$namespace\"})", "refId": "A"}],
+          "title": "Application readiness",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"mappings": [{"options": {"0": {"color": "green", "text": "Inactive"}, "1": {"color": "orange", "text": "Active"}}, "type": "value"}], "max": 1, "min": 0}, "overrides": []},
+          "gridPos": {"h": 6, "w": 12, "x": 12, "y": 16},
+          "id": 6,
+          "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "targets": [{"expr": "max by (failure_type) (cloudward_demo_failure_injection_active{namespace=\"$namespace\"})", "legendFormat": "{{failure_type}}", "refId": "A"}],
+          "title": "Failure injection state",
+          "type": "stat"
+        }
+      ],
+      "refresh": "15s",
+      "schemaVersion": 39,
+      "tags": ["cloudward", "demo", "reliability"],
+      "templating": {"list": [{"current": {"selected": true, "text": "cloudward-staging", "value": "cloudward-staging"}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "definition": "label_values(cloudward_demo_http_requests_total, namespace)", "hide": 0, "includeAll": false, "label": "Namespace", "name": "namespace", "query": {"query": "label_values(cloudward_demo_http_requests_total, namespace)", "refId": "StandardVariableQuery"}, "refresh": 1, "type": "query"}]},
+      "time": {"from": "now-30m", "to": "now"},
+      "timezone": "browser",
+      "title": "CloudWard Demo Service",
+      "uid": "cloudward-demo-service",
+      "version": 1
+    }

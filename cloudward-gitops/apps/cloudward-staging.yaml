@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudward-staging
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    cloudward.io/environment: staging
+spec:
+  project: cloudward
+  source:
+    repoURL: https://github.com/biraj49/cloudward-gitops.git
+    targetRevision: main
+    path: cloudward-gitops/environments/staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cloudward-staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 2m

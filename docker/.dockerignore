@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+.k3d
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.venv
+frontend/node_modules
+frontend/dist
+**/*.pyc

@@ -1,0 +1,131 @@
+# Local-only values for open-telemetry/opentelemetry-collector 0.170.0.
+fullnameOverride: otel-collector
+mode: daemonset
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.158.0"
+command:
+  name: otelcol-contrib
+
+presets:
+  logsCollection:
+    enabled: true
+    includeCollectorLogs: false
+    storeCheckpoints: true
+  kubernetesAttributes:
+    enabled: true
+
+config:
+  exporters:
+    otlp/tempo:
+      endpoint: tempo.observability.svc.cluster.local:4317
+      tls:
+        insecure: true
+      sending_queue:
+        enabled: true
+        queue_size: 512
+      retry_on_failure:
+        enabled: true
+        initial_interval: 1s
+        max_interval: 15s
+        max_elapsed_time: 60s
+    otlphttp/loki:
+      endpoint: http://loki-gateway.observability.svc.cluster.local/otlp
+      sending_queue:
+        enabled: true
+        queue_size: 512
+      retry_on_failure:
+        enabled: true
+        initial_interval: 1s
+        max_interval: 15s
+        max_elapsed_time: 60s
+  processors:
+    filter/drop-infrastructure-traces:
+      error_mode: ignore
+      traces:
+        span:
+          - 'attributes["http.route"] == "/metrics"'
+          - 'attributes["http.route"] == "/health/live"'
+          - 'attributes["http.route"] == "/health/ready"'
+          - 'attributes["url.path"] == "/metrics"'
+          - 'attributes["url.path"] == "/health/live"'
+          - 'attributes["url.path"] == "/health/ready"'
+    resource/cloudward:
+      attributes:
+        - key: k8s.cluster.name
+          value: cloudward-local
+          action: upsert
+        - key: deployment.environment
+          from_attribute: k8s.namespace.name
+          action: insert
+  service:
+    pipelines:
+      logs:
+        receivers:
+          - filelog
+          - otlp
+        processors:
+          - memory_limiter
+          - k8sattributes
+          - resource/cloudward
+          - batch
+        exporters:
+          - otlphttp/loki
+      traces:
+        receivers:
+          - otlp
+        processors:
+          - memory_limiter
+          - k8sattributes
+          - resource/cloudward
+          - filter/drop-infrastructure-traces
+          - batch
+        exporters:
+          - otlp/tempo
+
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    hostPort: null
+    protocol: TCP
+    appProtocol: grpc
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    hostPort: null
+    protocol: TCP
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+  metrics:
+    enabled: true
+    containerPort: 8888
+    servicePort: 8888
+    protocol: TCP
+
+resources:
+  requests:
+    cpu: 75m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+useGOMEMLIMIT: true
+
+serviceMonitor:
+  enabled: true
+  metricsEndpoints:
+    - port: metrics
+      interval: 30s
+  extraLabels:
+    app.kubernetes.io/part-of: cloudward

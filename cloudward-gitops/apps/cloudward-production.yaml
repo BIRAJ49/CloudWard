@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudward-production
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    cloudward.io/environment: production
+spec:
+  project: cloudward
+  source:
+    repoURL: https://github.com/biraj49/cloudward-gitops.git
+    targetRevision: main
+    path: cloudward-gitops/environments/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cloudward-production
+  syncPolicy:
+    # Argo reconciles automatically only after an approved production values
+    # change reaches main. The promotion workflow can only open a PR.
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

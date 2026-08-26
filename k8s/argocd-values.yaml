@@ -1,0 +1,35 @@
+crds:
+  install: true
+global:
+  domain: argocd.cloudward.local
+configs:
+  params:
+    server.insecure: true
+  cm:
+    timeout.reconciliation: 30s
+server:
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+repoServer:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+applicationSet:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+notifications:
+  enabled: false
+dex:
+  enabled: false

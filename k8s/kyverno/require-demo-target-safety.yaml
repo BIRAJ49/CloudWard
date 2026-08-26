@@ -1,0 +1,27 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: cloudward-require-demo-target-safety
+  annotations:
+    policies.kyverno.io/title: Protect Demo Target Label
+    policies.kyverno.io/category: CloudWard Safety Boundary
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: forbid-demo-targets-in-production
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - cloudward-production
+              selector:
+                matchLabels:
+                  cloudward.io/demo-target: "true"
+      validate:
+        allowExistingViolations: false
+        message: Controlled destructive demo targets are forbidden in production.
+        deny: {}

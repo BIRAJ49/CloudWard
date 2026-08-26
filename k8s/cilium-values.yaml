@@ -1,0 +1,33 @@
+# Full Cilium CNI and network-policy dataplane for k3d. k3s kube-proxy remains
+# enabled for Service translation because kube-proxy-free BPF ClusterIPs are
+# not reliable in Docker Desktop's nested-container network. Flannel and k3s'
+# network-policy controller remain disabled, so Cilium is still the sole CNI.
+kubeProxyReplacement: "false"
+k8sServiceHost: k3d-cloudward-server-0
+k8sServicePort: "6443"
+routingMode: tunnel
+tunnelProtocol: vxlan
+sysctlfix:
+  # k3d node images do not ship /etc/sysctl.d; this optional compatibility
+  # override otherwise stalls forever in Cilium's init container.
+  enabled: false
+ipam:
+  mode: cluster-pool
+  operator:
+    # Match k3s' default node PodCIDRs. Cilium documents this override as
+    # required for k3s; mismatched pools break multi-node routing.
+    clusterPoolIPv4PodCIDRList:
+      - 10.42.0.0/16
+    clusterPoolIPv4MaskSize: 24
+hubble:
+  enabled: true
+  relay:
+    enabled: false
+  ui:
+    enabled: false
+prometheus:
+  enabled: true
+operator:
+  replicas: 1
+  prometheus:
+    enabled: true

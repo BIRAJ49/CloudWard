@@ -1,0 +1,9 @@
+apiVersion: v2
+name: cloudward-local
+description: Local CloudWard GitOps composition
+type: application
+version: 0.1.0
+dependencies:
+  - name: cloudward-demo
+    version: 0.1.0
+    repository: file://../../../helm/cloudward-demo

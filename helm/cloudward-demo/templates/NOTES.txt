@@ -1,0 +1,5 @@
+CloudWard demo target is installed as {{ include "cloudward-demo.fullname" . }}.
+
+It exposes `/health/live` and `/health/ready` on service port
+{{ .Values.service.port }}. The `cloudward.io/demo-target=true` label is the
+non-negotiable remediation target boundary.

@@ -1,0 +1,26 @@
+id: reliability.cpu-saturation
+version: 1
+environments: [staging]
+match:
+  incident_type: reliability.cpu-saturation
+  conditions: [cpu_saturated, latency_degraded]
+evidence:
+  required:
+    - cpu_saturation
+    - latency
+    - readiness
+    - resource_configuration
+preconditions:
+  max_target_pods: 10
+  controller_managed: true
+action:
+  type: SCALE_STAGING_DEPLOYMENT
+verify:
+  timeout: 180s
+  conditions:
+    - cpu_saturation_below_threshold
+    - p95_latency_below_threshold
+    - ready_replicas_restored
+    - synthetic_request_passes
+rollback:
+  enabled: true

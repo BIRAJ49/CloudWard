@@ -1,0 +1,25 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cloudward-r3-memory-pressure
+  namespace: cloudward-staging
+  labels:
+    app.kubernetes.io/part-of: cloudward
+    cloudward.io/scenario: reliability.memory-pressure
+  annotations:
+    cloudward.io/expected-alert: ContainerOOMKilled
+    cloudward.io/expected-runbook: reliability.memory-pressure
+    cloudward.io/max-runtime: 120s
+spec:
+  mode: fixed
+  value: "1"
+  selector:
+    namespaces:
+      - cloudward-staging
+    labelSelectors:
+      cloudward.io/demo-target: "true"
+  stressors:
+    memory:
+      workers: 1
+      size: 160Mi
+  duration: 90s

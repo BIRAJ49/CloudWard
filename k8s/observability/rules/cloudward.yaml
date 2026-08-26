@@ -1,0 +1,75 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cloudward-control-plane
+  labels:
+    app.kubernetes.io/part-of: cloudward
+spec:
+  groups:
+    - name: cloudward.control-plane
+      interval: 30s
+      rules:
+        - alert: CloudWardAPIUnavailable
+          expr: up{job="cloudward-control-plane"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            category: platform
+            cloudward_scope: self-monitoring
+            cloudward_notify: "true"
+            cloudward_self_remediation: "disabled"
+          annotations:
+            summary: CloudWard API metrics endpoint is unavailable
+            description: Alert only. Part 2 never starts a self-remediation loop for the CloudWard control plane.
+
+        - alert: CloudWardCeleryWorkerUnavailable
+          expr: cloudward_celery_worker_up == 0
+          for: 2m
+          labels:
+            severity: critical
+            category: platform
+            cloudward_scope: self-monitoring
+            cloudward_notify: "true"
+            cloudward_self_remediation: "disabled"
+          annotations:
+            summary: CloudWard reports that no Celery worker is available
+            description: Background incident processing may be stalled; operator investigation is required.
+
+        - alert: CloudWardWebhookErrorsHigh
+          expr: sum(rate(cloudward_webhook_events_total{result=~"error|failed|rejected"}[5m])) > 0.10
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+            cloudward_scope: self-monitoring
+            cloudward_notify: "true"
+            cloudward_self_remediation: "disabled"
+          annotations:
+            summary: CloudWard webhook errors are elevated
+            description: More than 0.1 webhook errors per second have been recorded for five minutes.
+
+        - alert: CloudWardRemediationFailureRateElevated
+          expr: sum(rate(cloudward_remediation_failures_total[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            category: platform
+            cloudward_scope: self-monitoring
+            cloudward_notify: "true"
+            cloudward_self_remediation: "disabled"
+          annotations:
+            summary: CloudWard remediation failures are elevated
+            description: Remediation failures require operator review; this alert does not authorize another action.
+
+        - alert: CloudWardOPAUnavailable
+          expr: cloudward_dependency_up{dependency="opa"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            category: platform
+            cloudward_scope: self-monitoring
+            cloudward_notify: "true"
+            cloudward_self_remediation: "disabled"
+          annotations:
+            summary: CloudWard reports OPA as unavailable
+            description: Action authorization fails closed while the policy authority is unavailable.

@@ -1,0 +1,39 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: cloudward-restrict-chaos-targets
+  annotations:
+    policies.kyverno.io/title: Restrict CloudWard Chaos Targets
+    policies.kyverno.io/category: CloudWard Safety Boundary
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/subject: StressChaos,PodChaos
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-exact-staging-demo-target
+      match:
+        any:
+          - resources:
+              kinds:
+                - chaos-mesh.org/v1alpha1/StressChaos
+                - chaos-mesh.org/v1alpha1/PodChaos
+      validate:
+        allowExistingViolations: false
+        message: Chaos is restricted to the exact cloudward-staging namespace and cloudward.io/demo-target=true selector.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.namespace || '' }}"
+                operator: NotEquals
+                value: cloudward-staging
+              - key: "{{ length(request.object.spec.selector.namespaces || `[]`) }}"
+                operator: NotEquals
+                value: 1
+              - key: "{{ request.object.spec.selector.namespaces || `[]` }}"
+                operator: AnyNotIn
+                value:
+                  - cloudward-staging
+              - key: "{{ request.object.spec.selector.labelSelectors.\"cloudward.io/demo-target\" || '' }}"
+                operator: NotEquals
+                value: "true"

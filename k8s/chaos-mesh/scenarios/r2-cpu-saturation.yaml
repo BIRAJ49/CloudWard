@@ -1,0 +1,24 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cloudward-r2-cpu-saturation
+  namespace: cloudward-staging
+  labels:
+    app.kubernetes.io/part-of: cloudward
+    cloudward.io/scenario: reliability.cpu-saturation
+  annotations:
+    cloudward.io/expected-alert: HighCPUSaturation
+    cloudward.io/expected-runbook: reliability.cpu-saturation
+    cloudward.io/max-runtime: 120s
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - cloudward-staging
+    labelSelectors:
+      cloudward.io/demo-target: "true"
+  stressors:
+    cpu:
+      workers: 1
+      load: 85
+  duration: 90s

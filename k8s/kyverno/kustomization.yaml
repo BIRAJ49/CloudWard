@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - disallow-privileged-containers.yaml
+  - disallow-host-namespaces.yaml
+  - disallow-unsafe-capabilities.yaml
+  - require-demo-target-safety.yaml
+  - require-cloudward-image-digests.yaml
+  - restrict-chaos-targets.yaml
+  - verify-cloudward-images.yaml

@@ -1,0 +1,46 @@
+# Local-only values for chaos-mesh/chaos-mesh 2.8.4 on k3d/k3s.
+clusterScoped: true
+timezone: UTC
+enableProfiling: false
+
+images:
+  registry: ghcr.io
+  tag: v2.8.4
+
+controllerManager:
+  replicaCount: 1
+  enableFilterNamespace: true
+  allowHostNetworkTesting: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+chaosDaemon:
+  runtime: containerd
+  socketPath: /run/k3s/containerd/containerd.sock
+  privileged: true
+  mtls:
+    enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  service:
+    scrape:
+      enabled: true
+
+# The direct Chaos Mesh dashboard would be a second, less constrained launch
+# path. CloudWard's typed Incident Lab is the only supported control surface.
+dashboard:
+  create: false
+
+# Part 2 uses StressChaos and PodChaos; DNSChaos is deliberately not installed.
+dnsServer:
+  create: false

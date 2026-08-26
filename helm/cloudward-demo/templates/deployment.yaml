@@ -1,0 +1,116 @@
+{{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag -}}
+{{- $version := .Values.image.tag -}}
+{{- $annotations := deepCopy .Values.podAnnotations -}}
+{{- with .Values.release.sourceCommit -}}
+{{- $_ := set $annotations "cloudward.io/source-commit" . -}}
+{{- end -}}
+{{- with .Values.release.sbomReference -}}
+{{- $_ := set $annotations "cloudward.io/sbom-reference" . -}}
+{{- end -}}
+{{- with .Values.release.securityScan -}}
+{{- $_ := set $annotations "cloudward.io/security-scan" . -}}
+{{- end -}}
+{{- with .Values.release.stagingValidation -}}
+{{- $_ := set $annotations "cloudward.io/staging-validation" . -}}
+{{- end -}}
+{{- with .Values.image.digest -}}
+{{- $_ := set $annotations "cloudward.io/image-digest" . -}}
+{{- end -}}
+{{- if .Values.image.digest -}}
+{{- $image = printf "%s@%s" .Values.image.repository .Values.image.digest -}}
+{{- $version = .Values.image.digest -}}
+{{- else if .Values.image.requireDigest -}}
+{{- fail "image.digest must be a sha256 digest when image.requireDigest=true" -}}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cloudward-demo.fullname" . }}
+  labels:
+    {{- include "cloudward-demo.labels" . | nindent 4 }}
+    {{- if .Values.demoTarget.enabled }}
+    cloudward.io/demo-target: "true"
+    {{- end }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "cloudward-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- toYaml $annotations | nindent 8 }}
+      labels:
+        {{- include "cloudward-demo.labels" . | nindent 8 }}
+        {{- if .Values.demoTarget.enabled }}
+        cloudward.io/demo-target: "true"
+        {{- end }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: {{ include "cloudward-demo.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: api
+          image: {{ $image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: DEPLOYMENT_ENVIRONMENT
+              value: {{ .Values.telemetry.environment | quote }}
+            - name: SERVICE_VERSION
+              value: {{ $version | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: cloudward-demo-api
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.telemetry.otlpEndpoint | quote }}
+            - name: DEMO_CONTROL_ENABLED
+              value: {{ .Values.demoTarget.enabled | quote }}
+            - name: DEMO_TRAFFIC_ENABLED
+              value: {{ .Values.demoTarget.enabled | quote }}
+            - name: CLOUDWARD_C2_URL
+              value: {{ .Values.securityScenario.c2Url | quote }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: runtime-state
+              mountPath: /tmp/cloudward-demo
+      volumes:
+        - name: runtime-state
+          emptyDir:
+            sizeLimit: 16Mi
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

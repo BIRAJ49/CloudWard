@@ -1,0 +1,205 @@
+# Local-only values for prometheus-community/kube-prometheus-stack 88.5.3.
+# The cluster intentionally has no dynamic volume provisioner. Telemetry is
+# therefore bounded and ephemeral across pod/cluster recreation.
+fullnameOverride: kube-prometheus-stack
+
+crds:
+  enabled: true
+
+defaultRules:
+  create: true
+
+# k3d does not expose these control-plane metrics through the endpoints assumed
+# by the upstream chart. Disabling them avoids permanently false targets.
+kubeControllerManager:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeScheduler:
+  enabled: false
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+    retention: 120h
+    resources:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+    alertmanagerConfigSelector:
+      matchLabels:
+        cloudward.io/alertmanager-config: "true"
+    alertmanagerConfigNamespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: observability
+    alertmanagerConfigMatcherStrategy:
+      type: None
+  config:
+    global:
+      resolve_timeout: 2m
+    route:
+      receiver: sink
+      group_by:
+        - alertname
+        - namespace
+        - service
+        - environment
+      group_wait: 10s
+      group_interval: 30s
+      repeat_interval: 4h
+    receivers:
+      - name: sink
+
+grafana:
+  enabled: true
+  defaultDashboardsEnabled: false
+  admin:
+    existingSecret: cloudward-grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  service:
+    type: ClusterIP
+  serviceMonitor:
+    enabled: true
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: observability
+      folderAnnotation: grafana_folder
+      provider:
+        allowUiUpdates: false
+        foldersFromFilesStructure: true
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki-gateway.observability.svc.cluster.local
+      jsonData:
+        timeout: 60
+        maxLines: 1000
+        derivedFields:
+          - name: TraceID
+            matcherRegex: '"trace_id"\s*:\s*"([0-9a-f]{32})"'
+            datasourceUid: tempo
+            url: '$${__value.raw}'
+            urlDisplayLabel: Open trace
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      access: proxy
+      url: http://tempo.observability.svc.cluster.local:3200
+      jsonData:
+        nodeGraph:
+          enabled: true
+        search:
+          hide: false
+        tracesToLogsV2:
+          datasourceUid: loki
+          filterByTraceID: true
+          filterBySpanID: false
+          spanStartTimeShift: -2m
+          spanEndTimeShift: 2m
+          tags:
+            - key: service.name
+              value: service_name
+            - key: deployment.environment
+              value: environment
+        tracesToMetrics:
+          datasourceUid: prometheus
+          spanStartTimeShift: -2m
+          spanEndTimeShift: 2m
+          tags:
+            - key: service.name
+              value: service
+          queries:
+            - name: Request rate
+              query: 'sum(rate(cloudward_demo_http_requests_total{service="$${__span.tags.service.name}"}[5m]))'
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+
+prometheus:
+  enabled: true
+  prometheusSpec:
+    replicas: 1
+    retention: 7d
+    retentionSize: 8GB
+    walCompression: true
+    enableAdminAPI: false
+    externalLabels:
+      cluster: cloudward-local
+      environment: local
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1536Mi
+    storageSpec:
+      emptyDir:
+        sizeLimit: 8Gi
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    additionalScrapeConfigs:
+      - job_name: cloudward-control-plane
+        metrics_path: /metrics
+        scrape_interval: 15s
+        scrape_timeout: 5s
+        static_configs:
+          - targets:
+              - host.k3d.internal:8080
+            labels:
+              service: cloudward-api
+              environment: local
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 30m
+      memory: 48Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

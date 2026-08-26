@@ -1,0 +1,22 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: cloudward-r4-workload-failure
+  namespace: cloudward-staging
+  labels:
+    app.kubernetes.io/part-of: cloudward
+    cloudward.io/scenario: reliability.platform-self-healing
+  annotations:
+    cloudward.io/expected-alert: WorkloadUnavailable
+    cloudward.io/expected-runbook: reliability.platform-self-healing
+    cloudward.io/max-runtime: 60s
+spec:
+  action: pod-kill
+  mode: fixed
+  value: "1"
+  selector:
+    namespaces:
+      - cloudward-staging
+    labelSelectors:
+      cloudward.io/demo-target: "true"
+  duration: 30s

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    app.kubernetes.io/part-of: cloudward
+    cloudward.io/environment: local
+    cloudward.io/chaos-excluded: "true"
+    # node-exporter needs host mounts. Only pinned observability charts are
+    # installed here; application workloads do not belong in this namespace.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline

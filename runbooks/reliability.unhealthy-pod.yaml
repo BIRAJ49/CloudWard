@@ -1,0 +1,25 @@
+id: reliability.unhealthy-pod
+version: 1
+environments:
+  - local
+  - staging
+match:
+  incident_type: reliability
+  conditions:
+    - pod_unhealthy
+evidence:
+  required:
+    - kubernetes_state
+    - readiness
+preconditions:
+  max_target_pods: 1
+  controller_managed: true
+action:
+  type: DELETE_UNHEALTHY_POD
+verify:
+  timeout: 120s
+  conditions:
+    - ready_replicas_restored
+    - health_endpoint_healthy
+rollback:
+  enabled: false

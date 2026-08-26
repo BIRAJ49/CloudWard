@@ -1,0 +1,15 @@
+cloudward-demo:
+  replicaCount: 2
+  image:
+    repository: cloudward-demo-api
+    tag: local
+    pullPolicy: IfNotPresent
+  podLabels:
+    cloudward.io/environment: staging
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

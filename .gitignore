@@ -1,0 +1,48 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+kubeconfig*
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# JavaScript
+node_modules/
+frontend/dist/
+coverage/
+*.tsbuildinfo
+
+# Tooling and local state
+.DS_Store
+.idea/
+.vscode/
+*.log
+tmp/
+.k3d/
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Local database and runtime state
+*.db
+*.sqlite
+*.sqlite3
+postgres-data/
+redis-data/
+

@@ -1,0 +1,6 @@
+# CloudWard has no active vulnerability exceptions. A future exception must name
+# one finding, constrain its path/package, include an owner and an expiration
+# date, and be approved in a security-reviewed pull request.
+vulnerabilities: []
+misconfigurations: []
+secrets: []

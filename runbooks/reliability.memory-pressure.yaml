@@ -1,0 +1,26 @@
+id: reliability.memory-pressure
+version: 1
+environments: [staging]
+match:
+  incident_type: reliability.memory-pressure
+  conditions: [container_oomkilled, restart_count_increased]
+evidence:
+  required:
+    - container_termination
+    - memory_working_set
+    - restart_count
+    - kubernetes_event
+    - logs
+preconditions:
+  max_target_pods: 3
+  controller_managed: true
+action:
+  type: DELETE_UNHEALTHY_POD
+verify:
+  timeout: 180s
+  conditions:
+    - ready_replicas_restored
+    - health_check_passes
+    - memory_stable
+rollback:
+  enabled: false

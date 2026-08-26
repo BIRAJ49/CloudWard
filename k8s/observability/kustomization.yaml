@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: observability
+resources:
+  - alertmanager-config.yaml
+  - service-monitor-demo.yaml
+  - rules/reliability.yaml
+  - rules/cloudward.yaml
+  - dashboards/demo-service.yaml
+  - dashboards/reliability-overview.yaml
+  - dashboards/kubernetes-workload-health.yaml
+  - dashboards/cloudward-control-plane.yaml

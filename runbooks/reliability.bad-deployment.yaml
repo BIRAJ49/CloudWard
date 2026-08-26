@@ -1,0 +1,28 @@
+id: reliability.bad-deployment
+version: 1
+environments: [staging]
+match:
+  incident_type: reliability.bad-deployment
+  conditions: [high_http_error_rate, recent_deployment]
+evidence:
+  required:
+    - deployment_state
+    - previous_revision
+    - error_rate
+    - logs
+    - traces
+    - readiness
+preconditions:
+  max_target_pods: 10
+  controller_managed: true
+action:
+  type: REVERT_IMAGE
+verify:
+  timeout: 180s
+  conditions:
+    - ready_replicas_restored
+    - error_rate_below_threshold
+    - health_check_passes
+    - synthetic_request_passes
+rollback:
+  enabled: true

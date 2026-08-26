@@ -1,0 +1,34 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: cloudward-disallow-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Disallow Privileged Containers
+    policies.kyverno.io/category: CloudWard Baseline
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-non-privileged
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - cloudward-*
+      validate:
+        allowExistingViolations: false
+        message: Privileged containers are forbidden in CloudWard namespaces.
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  privileged: false
+            =(initContainers):
+              - securityContext:
+                  privileged: false
+            =(ephemeralContainers):
+              - securityContext:
+                  privileged: false

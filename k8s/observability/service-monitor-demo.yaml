@@ -1,0 +1,33 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cloudward-demo
+  labels:
+    app.kubernetes.io/part-of: cloudward
+spec:
+  namespaceSelector:
+    matchNames:
+      - cloudward-staging
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudward-demo
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 5s
+      honorLabels: false
+      sampleLimit: 10000
+      targetLimit: 20
+      labelLimit: 40
+      relabelings:
+        - sourceLabels:
+            - __meta_kubernetes_namespace
+          targetLabel: namespace
+        - sourceLabels:
+            - __meta_kubernetes_pod_label_cloudward_io_environment
+          targetLabel: environment
+        - replacement: cloudward-demo-api
+          targetLabel: service
+        - replacement: "true"
+          targetLabel: cloudward_demo

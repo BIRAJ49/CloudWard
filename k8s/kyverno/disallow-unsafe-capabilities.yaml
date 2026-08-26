@@ -1,0 +1,30 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: cloudward-disallow-unsafe-capabilities
+  annotations:
+    policies.kyverno.io/title: Disallow Unsafe Linux Capabilities
+    policies.kyverno.io/category: CloudWard Baseline
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: drop-all-capabilities
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - cloudward-*
+      validate:
+        allowExistingViolations: false
+        message: Containers must drop ALL Linux capabilities.
+        foreach:
+          - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
+            pattern:
+              securityContext:
+                capabilities:
+                  drop:
+                    - ALL

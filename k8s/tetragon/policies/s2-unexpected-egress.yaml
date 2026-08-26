@@ -1,0 +1,28 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: cloudward-s2-unexpected-egress
+  namespace: cloudward-staging
+spec:
+  podSelector:
+    matchLabels:
+      cloudward.io/demo-target: "true"
+  kprobes:
+    - call: sys_connect
+      syscall: true
+      args:
+        - index: 0
+          type: int
+        - index: 1
+          type: sock
+      return: true
+      returnArg:
+        index: 0
+        type: int
+      selectors:
+        - matchArgs:
+            - index: 1
+              operator: DPort
+              values:
+                - "8080"
+

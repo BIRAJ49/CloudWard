@@ -1,0 +1,23 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: cloudward-s1-unexpected-shell
+  namespace: cloudward-staging
+spec:
+  podSelector:
+    matchLabels:
+      cloudward.io/demo-target: "true"
+  kprobes:
+    - call: sys_execve
+      syscall: true
+      args:
+        - index: 0
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: In
+              values:
+                - /bin/sh
+                - /usr/bin/sh
+

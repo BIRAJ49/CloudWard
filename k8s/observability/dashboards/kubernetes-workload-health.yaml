@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-cloudward-kubernetes
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: CloudWard
+data:
+  cloudward-kubernetes-workload-health.json: |
+    {
+      "annotations": {"list": []},
+      "editable": false,
+      "graphTooltip": 1,
+      "panels": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "id": 1,
+          "targets": [{"expr": "kube_deployment_spec_replicas{namespace=\"$namespace\"} - kube_deployment_status_replicas_available{namespace=\"$namespace\"}", "legendFormat": "{{deployment}} unavailable", "refId": "A"}],
+          "title": "Unavailable Deployment replicas",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "id": 2,
+          "targets": [{"expr": "sum by (pod, container) (increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\"}[15m]))", "legendFormat": "{{pod}} / {{container}}", "refId": "A"}],
+          "title": "Container restarts (15m)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "id": 3,
+          "targets": [{"expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\",container!=\"\",image!=\"\"}[2m])) / clamp_min(sum by (pod) (kube_pod_container_resource_requests{namespace=\"$namespace\",resource=\"cpu\",unit=\"core\"}), 0.001)", "legendFormat": "{{pod}}", "refId": "A"}],
+          "title": "CPU usage / request",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "id": 4,
+          "targets": [{"expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\",container!=\"\",image!=\"\"}) / clamp_min(sum by (pod) (kube_pod_container_resource_limits{namespace=\"$namespace\",resource=\"memory\",unit=\"byte\"}), 1)", "legendFormat": "{{pod}}", "refId": "A"}],
+          "title": "Memory working set / limit",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+          "id": 5,
+          "options": {"showHeader": true},
+          "targets": [{"expr": "kube_pod_status_phase{namespace=\"$namespace\",phase=~\"Pending|Failed|Unknown\"} == 1", "format": "table", "instant": true, "refId": "A"}],
+          "title": "Pods outside Running/Succeeded",
+          "transformations": [{"id": "labelsToFields", "options": {}}],
+          "type": "table"
+        }
+      ],
+      "refresh": "15s",
+      "schemaVersion": 39,
+      "tags": ["cloudward", "kubernetes"],
+      "templating": {"list": [{"current": {"selected": true, "text": "cloudward-staging", "value": "cloudward-staging"}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "definition": "label_values(kube_pod_info, namespace)", "hide": 0, "includeAll": false, "label": "Namespace", "name": "namespace", "query": {"query": "label_values(kube_pod_info, namespace)", "refId": "StandardVariableQuery"}, "refresh": 1, "type": "query"}]},
+      "time": {"from": "now-1h", "to": "now"},
+      "timezone": "browser",
+      "title": "Kubernetes Workload Health",
+      "uid": "cloudward-kubernetes-health",
+      "version": 1
+    }

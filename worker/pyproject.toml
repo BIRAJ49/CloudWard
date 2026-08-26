@@ -1,0 +1,30 @@
+[project]
+name = "cloudward-worker"
+version = "0.1.0"
+description = "CloudWard asynchronous workflow worker"
+requires-python = ">=3.12"
+dependencies = [
+  "celery[redis]==5.6.3",
+  "redis==6.4.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest==9.1.1",
+  "ruff==0.16.2",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+pythonpath = [".."]
+markers = [
+  "integration: requires an external Redis broker and running Celery worker",
+]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

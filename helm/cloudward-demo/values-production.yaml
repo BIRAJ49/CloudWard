@@ -1,0 +1,36 @@
+replicaCount: 3
+
+image:
+  repository: ghcr.io/biraj49/cloudward-demo-api
+  tag: ""
+  digest: ""
+  requireDigest: true
+  pullPolicy: IfNotPresent
+
+release:
+  sourceCommit: ""
+  sbomReference: ""
+  securityScan: ""
+  stagingValidation: "pending"
+  rollbackDigest: ""
+
+podLabels:
+  cloudward.io/environment: production
+
+demoTarget:
+  enabled: false
+
+telemetry:
+  environment: production
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2

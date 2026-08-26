@@ -1,0 +1,29 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cloudward-gitops-drift
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: cloudward.gitops
+      rules:
+        - alert: CloudWardGitOpsApplicationOutOfSync
+          expr: argocd_app_info{name=~"cloudward-(staging|production)",sync_status!="Synced"} == 1
+          for: 10m
+          labels:
+            severity: warning
+            cloudward_signal: gitops_drift
+          annotations:
+            summary: CloudWard GitOps application is persistently out of sync
+            description: Argo CD has reported application {{ $labels.name }} out of sync for ten minutes.
+        - alert: CloudWardGitOpsApplicationDegraded
+          expr: argocd_app_info{name=~"cloudward-(staging|production)",health_status="Degraded"} == 1
+          for: 5m
+          labels:
+            severity: critical
+            cloudward_signal: gitops_health
+          annotations:
+            summary: CloudWard GitOps application is degraded
+            description: Argo CD reports application {{ $labels.name }} as degraded.

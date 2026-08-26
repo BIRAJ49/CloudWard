@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compliant-demo
+  namespace: cloudward-staging
+spec:
+  containers:
+    - name: app
+      image: registry.k8s.io/pause:3.10
+      securityContext:
+        privileged: false
+        capabilities:
+          drop: [ALL]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cloudward-digest-pinned
+  namespace: cloudward-staging
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/biraj49/cloudward-demo-api@sha256:1111111111111111111111111111111111111111111111111111111111111111
+      securityContext:
+        privileged: false
+        capabilities:
+          drop: [ALL]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cloudward-mutable-tag
+  namespace: cloudward-staging
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/biraj49/cloudward-demo-api:latest
+      securityContext:
+        privileged: false
+        capabilities:
+          drop: [ALL]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: privileged-demo
+  namespace: cloudward-staging
+spec:
+  containers:
+    - name: app
+      image: registry.k8s.io/pause:3.10
+      securityContext:
+        privileged: true
+        capabilities:
+          drop: [ALL]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: host-network-demo
+  namespace: cloudward-staging
+spec:
+  hostNetwork: true
+  containers:
+    - name: app
+      image: registry.k8s.io/pause:3.10
+      securityContext:
+        privileged: false
+        capabilities:
+          drop: [ALL]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unsafe-capability-demo
+  namespace: cloudward-staging
+spec:
+  containers:
+    - name: app
+      image: registry.k8s.io/pause:3.10
+      securityContext:
+        privileged: false
+        capabilities:
+          add: [NET_ADMIN]
+          drop: [CHOWN]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: production-demo-target
+  namespace: cloudward-production
+  labels:
+    cloudward.io/demo-target: "true"
+spec:
+  containers:
+    - name: app
+      image: registry.k8s.io/pause:3.10
+      securityContext:
+        privileged: false
+        capabilities:
+          drop: [ALL]

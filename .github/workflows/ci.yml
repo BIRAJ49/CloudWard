@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22.14.0"
+  KYVERNO_VERSION: "v1.18.2"
+
+jobs:
+  python:
+    name: Python lint, types, and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v6.7.0
+        with:
+          version: "0.8.17"
+          enable-cache: true
+      - name: Backend quality gate
+        working-directory: backend
+        run: |
+          uv sync --frozen --all-groups
+          uv run ruff check app tests
+          uv run mypy app
+          uv run pytest -m "not integration and not kubernetes"
+      - name: Worker quality gate
+        working-directory: worker
+        run: |
+          uv sync --frozen --all-groups
+          uv run ruff check .
+          uv run pytest -m "not integration"
+      - name: Demo service quality gate
+        working-directory: demo-services/api
+        run: |
+          uv sync --frozen --all-groups
+          uv run ruff check app tests
+          uv run pytest
+
+  frontend:
+    name: Frontend lint, tests, and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  policy-and-packaging:
+    name: Policy and Helm validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.19.0
+      - uses: azure/setup-kubectl@v4.0.1
+        with:
+          version: v1.35.0
+      - uses: kyverno/action-install-cli@v0.2.0
+        with:
+          release: ${{ env.KYVERNO_VERSION }}
+      - name: Install pinned yq
+        env:
+          YQ_VERSION: v4.47.2
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+            --output "$RUNNER_TEMP/yq"
+          curl --fail --silent --show-error --location \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums" \
+            --output "$RUNNER_TEMP/yq-checksums"
+          expected="$(awk '$2 == "yq_linux_amd64" {print $1}' "$RUNNER_TEMP/yq-checksums")"
+          printf '%s  %s\n' "$expected" "$RUNNER_TEMP/yq" | sha256sum --check --status
+          chmod 0755 "$RUNNER_TEMP/yq"
+          printf '%s\n' "$RUNNER_TEMP" >>"$GITHUB_PATH"
+      - name: Validate shell programs
+        run: |
+          shellcheck -x scripts/*.sh scripts/gitops/*.sh scripts/supply-chain/*.sh
+      - name: Validate Helm packaging and digest-only release values
+        env:
+          TEST_DIGEST: sha256:1111111111111111111111111111111111111111111111111111111111111111
+        run: |
+          helm lint helm/cloudward-demo --strict
+          helm lint helm/cloudward-demo --strict \
+            --values helm/cloudward-demo/values-local.yaml
+          helm lint helm/cloudward-demo --strict \
+            --values helm/cloudward-demo/values-staging.yaml \
+            --set-string image.digest="$TEST_DIGEST"
+          helm lint helm/cloudward-demo --strict \
+            --values helm/cloudward-demo/values-production.yaml \
+            --set-string image.digest="$TEST_DIGEST"
+          for environment in local staging production; do
+            helm dependency build "cloudward-gitops/environments/$environment"
+          done
+          helm lint cloudward-gitops/environments/local --strict
+          helm lint cloudward-gitops/environments/staging --strict \
+            --set-string cloudward-demo.image.digest="$TEST_DIGEST"
+          helm lint cloudward-gitops/environments/production --strict \
+            --set-string cloudward-demo.image.digest="$TEST_DIGEST"
+      - name: Validate Kubernetes and Kyverno policy assets
+        run: |
+          kubectl kustomize k8s/kyverno >/dev/null
+          kubectl kustomize k8s/namespaces >/dev/null
+          kyverno test k8s/kyverno
+          scripts/gitops/test-promotion-assets.sh
+
+  trivy-source:
+    name: Trivy repository gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - name: Vulnerability, misconfiguration, and secret scan
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          trivy-config: trivy.yaml
+          format: table

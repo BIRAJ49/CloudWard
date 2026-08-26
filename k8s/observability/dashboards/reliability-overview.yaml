@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-cloudward-reliability
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: CloudWard
+data:
+  cloudward-reliability-overview.json: |
+    {
+      "annotations": {"list": []},
+      "editable": false,
+      "graphTooltip": 1,
+      "panels": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+          "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+          "id": 1,
+          "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "targets": [{"expr": "count(ALERTS{alertstate=\"firing\",cloudward_scope=\"reliability\"})", "refId": "A"}],
+          "title": "Firing reliability alerts",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+          "id": 2,
+          "options": {"colorMode": "value", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "targets": [{"expr": "sum(cloudward_active_incidents)", "refId": "A"}],
+          "title": "Active incidents reported",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+          "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+          "id": 3,
+          "options": {"colorMode": "value", "graphMode": "area", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "targets": [{"expr": "sum(rate(cloudward_remediation_actions_total[5m]))", "refId": "A"}],
+          "title": "Remediation action rate",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+          "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+          "id": 4,
+          "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+          "targets": [{"expr": "increase(cloudward_verification_failures_total[15m])", "refId": "A"}],
+          "title": "Verification failures (15m)",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "id": 5,
+          "targets": [{"expr": "sum(rate(cloudward_demo_http_requests_total{status_code=~\"5..\"}[1m])) / clamp_min(sum(rate(cloudward_demo_http_requests_total[1m])), 0.01)", "legendFormat": "HTTP 5xx ratio", "refId": "A"}],
+          "title": "Observed service error ratio",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "id": 6,
+          "targets": [{"expr": "histogram_quantile(0.95, sum by (le, service) (rate(cloudward_demo_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95 {{service}}", "refId": "A"}],
+          "title": "Observed service latency p95",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {}, "overrides": []},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 14},
+          "id": 7,
+          "options": {"showHeader": true},
+          "targets": [{"expr": "ALERTS{cloudward_scope=\"reliability\",alertstate=\"firing\"}", "format": "table", "instant": true, "refId": "A"}],
+          "title": "Current firing alert records",
+          "transformations": [{"id": "labelsToFields", "options": {}}],
+          "type": "table"
+        }
+      ],
+      "refresh": "15s",
+      "schemaVersion": 39,
+      "tags": ["cloudward", "reliability"],
+      "templating": {"list": []},
+      "time": {"from": "now-1h", "to": "now"},
+      "timezone": "browser",
+      "title": "CloudWard Reliability Overview",
+      "uid": "cloudward-reliability-overview",
+      "version": 1
+    }

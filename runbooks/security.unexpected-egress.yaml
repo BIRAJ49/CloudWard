@@ -1,0 +1,26 @@
+id: security.unexpected-egress
+version: 1
+environments:
+  - staging
+match:
+  incident_type: security.unexpected_egress
+  conditions:
+    - controlled_internal_egress
+evidence:
+  required:
+    - runtime_security_event
+    - controlled_egress_probe
+preconditions:
+  max_target_pods: 1
+  controller_managed: true
+action:
+  type: APPLY_QUARANTINE
+verify:
+  timeout: 30s
+  conditions:
+    - cilium_policy_targets_exact_pod
+    - controlled_egress_blocked
+    - pod_health_preserved
+rollback:
+  enabled: true
+

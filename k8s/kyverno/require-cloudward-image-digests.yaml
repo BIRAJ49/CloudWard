@@ -1,0 +1,39 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: cloudward-require-image-digests
+  annotations:
+    policies.kyverno.io/title: Require immutable CloudWard images
+    policies.kyverno.io/category: Software Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    pod-policies.kyverno.io/autogen-controllers: Deployment,StatefulSet,DaemonSet,Job,CronJob
+spec:
+  admission: true
+  background: true
+  validationFailureAction: Enforce
+  rules:
+    - name: require-sha256-reference
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - cloudward-staging
+                - cloudward-production
+      validate:
+        message: CloudWard GHCR images must use repository@sha256:<digest>.
+        foreach:
+          - list: request.object.spec.[initContainers,ephemeralContainers,containers][]
+            preconditions:
+              all:
+                - key: "{{ regex_match('^ghcr[.]io/biraj49/cloudward-', element.image) }}"
+                  operator: Equals
+                  value: true
+            deny:
+              conditions:
+                all:
+                  - key: "{{ regex_match('^ghcr[.]io/biraj49/cloudward-[a-z0-9._-]+@sha256:[a-f0-9]{64}$', element.image) }}"
+                    operator: Equals
+                    value: false

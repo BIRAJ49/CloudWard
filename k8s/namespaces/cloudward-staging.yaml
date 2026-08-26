@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudward-staging
+  annotations:
+    chaos-mesh.org/inject: enabled
+  labels:
+    app.kubernetes.io/part-of: cloudward
+    cloudward.io/environment: staging
+    cloudward.io/chaos-allowed: "true"
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

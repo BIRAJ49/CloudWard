@@ -1,0 +1,16 @@
+cache:
+  dir: .trivy-cache
+scan:
+  scanners:
+    - vuln
+    - misconfig
+    - secret
+  skip-dirs:
+    - .git
+severity:
+  - HIGH
+  - CRITICAL
+exit-code: 1
+ignore-unfixed: false
+ignorefile: .trivyignore.yaml
+timeout: 10m

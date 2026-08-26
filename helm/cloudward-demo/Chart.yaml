@@ -1,0 +1,9 @@
+apiVersion: v2
+name: cloudward-demo
+description: Controlled FastAPI reliability target for CloudWard
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.29.0-0"
+annotations:
+  cloudward.io/purpose: deterministic-remediation-target

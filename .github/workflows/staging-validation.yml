@@ -1,0 +1,114 @@
+name: Validate staging release
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_digest:
+        description: Optional sha256 digest expected in staging GitOps state
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudward-staging-validation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment: staging
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - name: Mint repository-scoped GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2.1.1
+        with:
+          app-id: ${{ secrets.CLOUDWARD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.CLOUDWARD_GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: cloudward-gitops
+      - uses: actions/checkout@v4.2.2
+        with:
+          repository: ${{ github.repository_owner }}/cloudward-gitops
+          ref: main
+          path: gitops
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: azure/setup-kubectl@v4.0.1
+        with:
+          version: v1.35.0
+      - uses: sigstore/cosign-installer@v3.10.0
+        with:
+          cosign-release: v2.5.3
+      - name: Install pinned yq
+        env:
+          YQ_VERSION: v4.47.2
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+            --output "$RUNNER_TEMP/yq"
+          curl --fail --silent --show-error --location \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums" \
+            --output "$RUNNER_TEMP/yq-checksums"
+          expected="$(awk '$2 == "yq_linux_amd64" {print $1}' "$RUNNER_TEMP/yq-checksums")"
+          printf '%s  %s\n' "$expected" "$RUNNER_TEMP/yq" | sha256sum --check --status
+          chmod 0755 "$RUNNER_TEMP/yq"
+          printf '%s\n' "$RUNNER_TEMP" >>"$GITHUB_PATH"
+      - name: Configure the explicitly scoped staging cluster
+        env:
+          KUBECONFIG_B64: ${{ secrets.STAGING_KUBECONFIG_B64 }}
+        run: |
+          [[ -n "$KUBECONFIG_B64" ]]
+          umask 077
+          printf '%s' "$KUBECONFIG_B64" | base64 --decode >"$RUNNER_TEMP/kubeconfig"
+          printf 'KUBECONFIG=%s\n' "$RUNNER_TEMP/kubeconfig" >>"$GITHUB_ENV"
+          context="$(kubectl --kubeconfig "$RUNNER_TEMP/kubeconfig" config current-context)"
+          printf 'EXPECTED_KUBE_CONTEXT=%s\n' "$context" >>"$GITHUB_ENV"
+      - name: Validate Argo reconciliation, readiness, health, and smoke behavior
+        id: state
+        env:
+          REQUESTED_DIGEST: ${{ inputs.expected_digest }}
+        run: |
+          repository="$(yq -r '.cloudward-demo.image.repository' gitops/cloudward-gitops/environments/staging/values.yaml)"
+          digest="$(yq -r '.cloudward-demo.image.digest' gitops/cloudward-gitops/environments/staging/values.yaml)"
+          if [[ -n "$REQUESTED_DIGEST" && "$REQUESTED_DIGEST" != "$digest" ]]; then
+            printf 'error: staging digest changed from requested %s to %s\n' "$REQUESTED_DIGEST" "$digest" >&2
+            exit 1
+          fi
+          scripts/gitops/validate-staging.sh "$repository" "$digest"
+          printf 'repository=%s\n' "$repository" >>"$GITHUB_OUTPUT"
+          printf 'digest=%s\n' "$digest" >>"$GITHUB_OUTPUT"
+      - name: Verify real admission decisions
+        env:
+          UNSIGNED_IMAGE: ${{ vars.UNSIGNED_CLOUDWARD_TEST_IMAGE }}
+          WRONG_IDENTITY_IMAGE: ${{ vars.WRONG_IDENTITY_CLOUDWARD_TEST_IMAGE }}
+          WRONG_IDENTITY_SUBJECT: ${{ vars.WRONG_IDENTITY_COSIGN_SUBJECT }}
+          APPROVED_SIGNED_IMAGE: ${{ steps.state.outputs.repository }}@${{ steps.state.outputs.digest }}
+        run: scripts/supply-chain/test-signature-admission.sh
+      - name: Record successful staging validation in Git
+        run: |
+          values=gitops/cloudward-gitops/environments/staging/values.yaml
+          repository="$(yq -r '.cloudward-demo.image.repository' "$values")"
+          digest="$(yq -r '.cloudward-demo.image.digest' "$values")"
+          source_commit="$(yq -r '.cloudward-demo.release.sourceCommit' "$values")"
+          sbom="$(yq -r '.cloudward-demo.release.sbomReference' "$values")"
+          scan="$(yq -r '.cloudward-demo.release.securityScan' "$values")"
+          rollback="$(yq -r '.cloudward-demo.release.rollbackDigest' "$values")"
+          scripts/gitops/update-release.sh \
+            "$values" staging "$repository" "$digest" "$source_commit" \
+            "$sbom" "$scan" passed "$rollback"
+          git -C gitops config user.name cloudward-validation-app
+          git -C gitops config user.email cloudward-validation-app@users.noreply.github.com
+          git -C gitops add cloudward-gitops/environments/staging/values.yaml
+          if git -C gitops diff --cached --quiet; then
+            exit 0
+          fi
+          git -C gitops commit -m "Record staging validation for ${digest}"
+          git -C gitops pull --rebase origin main
+          git -C gitops push origin HEAD:main

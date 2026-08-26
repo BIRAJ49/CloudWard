@@ -1,0 +1,25 @@
+id: security.suspicious-shell-pattern
+version: 1
+environments:
+  - staging
+match:
+  incident_type: security.suspicious_process
+  conditions:
+    - unexpected_shell_child
+evidence:
+  required:
+    - runtime_security_event
+    - kubernetes_state
+preconditions:
+  max_target_pods: 1
+  controller_managed: true
+action:
+  type: APPLY_QUARANTINE
+verify:
+  timeout: 30s
+  conditions:
+    - cilium_policy_targets_exact_pod
+    - controlled_egress_blocked
+    - pod_health_preserved
+rollback:
+  enabled: true

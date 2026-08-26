@@ -1,0 +1,114 @@
+name: Open production promotion PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_digest:
+        description: Exact validated staging sha256 digest
+        required: true
+        type: string
+      risk_notes:
+        description: Release-specific operational risk notes
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudward-production-promotion
+  cancel-in-progress: false
+
+jobs:
+  promotion-pr:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production-promotion
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - name: Mint repository-scoped GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2.1.1
+        with:
+          app-id: ${{ secrets.CLOUDWARD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.CLOUDWARD_GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: cloudward-gitops
+      - uses: actions/checkout@v4.2.2
+        with:
+          repository: ${{ github.repository_owner }}/cloudward-gitops
+          ref: main
+          path: gitops
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Install pinned yq
+        env:
+          YQ_VERSION: v4.47.2
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+            --output "$RUNNER_TEMP/yq"
+          curl --fail --silent --show-error --location \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/checksums" \
+            --output "$RUNNER_TEMP/yq-checksums"
+          expected="$(awk '$2 == "yq_linux_amd64" {print $1}' "$RUNNER_TEMP/yq-checksums")"
+          printf '%s  %s\n' "$expected" "$RUNNER_TEMP/yq" | sha256sum --check --status
+          chmod 0755 "$RUNNER_TEMP/yq"
+          printf '%s\n' "$RUNNER_TEMP" >>"$GITHUB_PATH"
+      - name: Prepare digest-only production change
+        id: promotion
+        env:
+          EXPECTED_DIGEST: ${{ inputs.expected_digest }}
+          RISK_NOTES: ${{ inputs.risk_notes }}
+        run: |
+          actual="$(yq -r '.cloudward-demo.image.digest' gitops/cloudward-gitops/environments/staging/values.yaml)"
+          [[ "$EXPECTED_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          [[ "$actual" == "$EXPECTED_DIGEST" ]]
+          scripts/gitops/prepare-production-promotion.sh \
+            gitops/cloudward-gitops "$RUNNER_TEMP/promotion.md" "$GITHUB_REPOSITORY" \
+            | tee "$RUNNER_TEMP/promotion.outputs"
+          {
+            printf '\n### Operator-supplied risk notes\n\n'
+            printf '%s\n' "$RISK_NOTES"
+          } >>"$RUNNER_TEMP/promotion.md"
+          cat "$RUNNER_TEMP/promotion.outputs" >>"$GITHUB_OUTPUT"
+      - name: Push promotion branch and open review PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          DIGEST: ${{ steps.promotion.outputs.digest }}
+        run: |
+          short_digest="${DIGEST#sha256:}"
+          branch="promotion/production-${short_digest:0:16}"
+          repository="${GITHUB_REPOSITORY_OWNER}/cloudward-gitops"
+          active="$(gh pr list --repo "$repository" --state open \
+            --json headRefName,url \
+            --jq '[.[] | select(.headRefName | startswith("promotion/production-"))][0].url // ""')"
+          if [[ -n "$active" ]]; then
+            existing="$(gh pr list --repo "$repository" --head "$branch" --state open --json url --jq '.[0].url // ""')"
+            if [[ -n "$existing" ]]; then
+              printf 'Promotion PR already exists: %s\n' "$existing" >>"$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            printf 'error: another production promotion is already open: %s\n' "$active" >&2
+            exit 1
+          fi
+          if git -C gitops ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null 2>&1; then
+            printf 'error: promotion branch exists without an open PR; refusing to overwrite it\n' >&2
+            exit 1
+          fi
+          git -C gitops config user.name cloudward-promotion-app
+          git -C gitops config user.email cloudward-promotion-app@users.noreply.github.com
+          git -C gitops switch -c "$branch"
+          git -C gitops add cloudward-gitops/environments/production/values.yaml
+          git -C gitops commit -m "Propose CloudWard ${DIGEST} for production"
+          git -C gitops push origin "$branch"
+          url="$(gh pr create \
+            --repo "$repository" \
+            --base main \
+            --head "$branch" \
+            --title "Promote CloudWard ${short_digest:0:12} to production" \
+            --body-file "$RUNNER_TEMP/promotion.md")"
+          printf 'Production remains unchanged pending human review: %s\n' "$url" >>"$GITHUB_STEP_SUMMARY"

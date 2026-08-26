@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: cloudward
+  namespace: argocd
+spec:
+  description: CloudWard staging and production delivery boundary
+  sourceRepos:
+    - https://github.com/biraj49/cloudward-gitops.git
+  destinations:
+    - namespace: cloudward-staging
+      server: https://kubernetes.default.svc
+    - namespace: cloudward-production
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: apps
+      kind: Deployment

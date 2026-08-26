@@ -1,0 +1,33 @@
+tetragon:
+  enableProcessCred: true
+  enableProcessNs: true
+  exportFilename: tetragon.log
+  exportFilePerm: "644"
+  exportFileMaxSizeMB: 5
+  exportFileMaxBackups: 2
+  exportFileCompress: false
+  exportRateLimit: 120
+  exportDenyList: |-
+    {"health_check":true}
+    {"namespace":["", "kube-system", "tetragon", "observability", "argocd", "kyverno"]}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+tetragonOperator:
+  enabled: true
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+export:
+  mode: stdout
+
