@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cloudward-observability-storage
+description: Bounded encrypted EBS storage class for CloudWard observability
+type: application
+version: 0.1.0
+appVersion: "1.0"

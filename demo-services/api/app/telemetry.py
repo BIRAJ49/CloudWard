@@ -19,7 +19,13 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 
 HTTP_REQUESTS = Counter(
     "cloudward_demo_http_requests_total",
@@ -30,7 +36,7 @@ HTTP_DURATION = Histogram(
     "cloudward_demo_http_request_duration_seconds",
     "CloudWard demo HTTP request duration",
     ("service", "method", "route", "status_code"),
-    # 6–12 second demo degradations remain distinguishable instead of collapsing at +Inf.
+    # Keep 6–12 second demo degradations distinguishable from +Inf.
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 8, 12, 20, 30),
 )
 IN_FLIGHT = Gauge(
@@ -122,7 +128,9 @@ def install_http_telemetry(
         route = _route(request.url.path)
         method = request.method.upper()
         supplied = request.headers.get("x-request-id", "")
-        request_id = supplied if SAFE_REQUEST_ID.fullmatch(supplied) else str(uuid.uuid4())
+        request_id = (
+            supplied if SAFE_REQUEST_ID.fullmatch(supplied) else str(uuid.uuid4())
+        )
         token = IN_FLIGHT.labels(service_name, method, route)
         token.inc()
         started = time.monotonic()
@@ -140,7 +148,9 @@ def install_http_telemetry(
             HTTP_DURATION.labels(service_name, method, route, status).observe(duration)
             READINESS.labels(service_name).set(1 if readiness() else 0)
             for failure_type, active in failures().items():
-                FAILURE_ACTIVE.labels(service_name, failure_type).set(1 if active else 0)
+                FAILURE_ACTIVE.labels(service_name, failure_type).set(
+                    1 if active else 0
+                )
             if route not in {"/metrics", "/health/live", "/health/ready"}:
                 _log_event(
                     level=logging.INFO,
@@ -161,7 +171,9 @@ def install_http_telemetry(
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-def install_tracing(app: FastAPI, *, service_name: str, service_version: str, environment: str) -> None:
+def install_tracing(
+    app: FastAPI, *, service_name: str, service_version: str, environment: str
+) -> None:
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
     if endpoint:
         provider = TracerProvider(

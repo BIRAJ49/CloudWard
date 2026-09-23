@@ -11,8 +11,8 @@ from app.ai.incident_context import build_incident_context
 from app.ai.models import AIDiagnosisRecord
 from app.ai.openrouter import OpenRouterProvider
 from app.ai.persistence import DatabaseInvocationRecorder, store_diagnosis
-from app.ai.schemas import AIStatus, DiagnosisOutcome
 from app.ai.safety import context_within_budget, evaluate_ai_admission
+from app.ai.schemas import AIStatus, DiagnosisOutcome
 from app.ai.service import DiagnosisRouter
 from app.config import Settings
 from app.db.models import Incident

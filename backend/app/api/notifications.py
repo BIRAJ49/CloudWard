@@ -5,7 +5,7 @@ from __future__ import annotations
 import hmac
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, ConfigDict
@@ -71,15 +71,18 @@ async def teams_readiness(
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TeamsIntegrationResponse:
-    counts = dict(
+    status_rows = (
         (
             await session.execute(
                 select(Notification.status, func.count(Notification.id))
                 .where(Notification.channel == "teams")
                 .group_by(Notification.status)
             )
-        ).all()
+        )
+        .tuples()
+        .all()
     )
+    counts: dict[RecordStatus, int] = dict(status_rows)
     return TeamsIntegrationResponse(
         configured=settings.teams_workflow_webhook_url is not None,
         enabled_events=sorted(settings.enabled_notification_events),
@@ -122,7 +125,9 @@ async def test_teams(
 ) -> list[Notification]:
     if settings.teams_workflow_webhook_url is None:
         raise CloudWardError(
-            "TEAMS_NOT_CONFIGURED", "Microsoft Teams workflow webhook is not configured", status_code=409
+            "TEAMS_NOT_CONFIGURED",
+            "Microsoft Teams workflow webhook is not configured",
+            status_code=409,
         )
     message = NotificationMessage(
         event_type="integration_test",

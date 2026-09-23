@@ -144,7 +144,7 @@ decision := {
 	"reason": "Action is registered but has no Part 1 executor policy",
 	"policy_id": policy_id,
 } if {
-	input.action not in {"DELETE_UNHEALTHY_POD", "SCALE_STAGING_DEPLOYMENT", "REVERT_IMAGE", "NO_ACTION", "APPLY_QUARANTINE", "REMOVE_QUARANTINE"}
+	not input.action in {"DELETE_UNHEALTHY_POD", "SCALE_STAGING_DEPLOYMENT", "REVERT_IMAGE", "NO_ACTION", "APPLY_QUARANTINE", "REMOVE_QUARANTINE"}
 } else := {
 	"allowed": false,
 	"requires_approval": false,

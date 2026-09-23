@@ -51,9 +51,7 @@ def deployment_state() -> DeploymentState:
     )
 
 
-async def snapshot(
-    argo_state: ArgoApplicationState, deployment_state: DeploymentState
-) -> Any:
+async def snapshot(argo_state: ArgoApplicationState, deployment_state: DeploymentState) -> Any:
     return await observe_drift(  # type: ignore[arg-type]
         FakeKubernetesExecutor(argo_state, deployment_state),
         environment="staging",

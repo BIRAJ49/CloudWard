@@ -5,10 +5,16 @@ export function NotFoundPage() {
   useDocumentTitle("Not found");
   return (
     <div className="not-found">
-      <p className="eyebrow">404 · Route not found</p>
-      <h1>This operational view does not exist.</h1>
-      <p>Return to the control-plane overview or inspect the incident register.</p>
-      <Link className="button button--primary" to="/">Return to overview</Link>
+      <div className="not-found__code" aria-hidden="true">404</div>
+      <div className="not-found__copy">
+        <p className="eyebrow">Route not found</p>
+        <h1>No operational view exists at this address.</h1>
+        <p>The route may have moved, or your access link may be incomplete.</p>
+        <div className="not-found__actions">
+          <Link className="button button--primary" to="/">Return to overview</Link>
+          <Link className="button button--quiet" to="/incidents">Open incident register</Link>
+        </div>
+      </div>
     </div>
   );
 }

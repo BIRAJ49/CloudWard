@@ -14,12 +14,12 @@ export function Panel({ title, eyebrow, action, children, className = "", descri
     <section className={`panel ${className}`}>
       {title || eyebrow || action ? (
         <header className="panel__header">
-          <div>
+          <div className="panel__heading">
             {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
             {title ? <h2>{title}</h2> : null}
             {description ? <p className="panel__description">{description}</p> : null}
           </div>
-          {action}
+          {action ? <div className="panel__actions">{action}</div> : null}
         </header>
       ) : null}
       {children}
@@ -36,8 +36,8 @@ export function EmptyState({
 }) {
   return (
     <div className="empty-state">
-      <strong>{title}</strong>
-      <p>{detail}</p>
+      <span className="empty-state__marker" aria-hidden="true" />
+      <div className="empty-state__copy"><strong>{title}</strong><p>{detail}</p></div>
     </div>
   );
 }
@@ -45,8 +45,8 @@ export function EmptyState({
 export function LoadingPanel({ label = "Loading operational data" }: { label?: string }) {
   return (
     <div className="loading-panel" role="status">
-      <span className="loading-spinner" aria-hidden="true" />
-      <span>{label}</span>
+      <span className="loading-panel__rule" aria-hidden="true" />
+      <span className="loading-panel__label">{label}</span>
     </div>
   );
 }
@@ -62,7 +62,8 @@ export function ErrorNotice({
 }) {
   return (
     <div className="error-notice" role="alert">
-      <div>
+      <span className="error-notice__mark" aria-hidden="true">!</span>
+      <div className="error-notice__copy">
         <strong>{title}</strong>
         <p>{message}</p>
       </div>

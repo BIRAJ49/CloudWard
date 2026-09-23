@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { EmptyState, ErrorNotice, LoadingPanel, Panel } from "../components/panel";
+import { EmptyState, ErrorNotice, LoadingPanel } from "../components/panel";
 import { StatusBadge } from "../components/status-badge";
 import { useDocumentTitle } from "../hooks/use-document-title";
 import { useControlPlaneEvents } from "../hooks/use-control-plane-events";
 import { cloudWardApi } from "../lib/api";
-import { displayValue, formatDate, humanize, stateTone } from "../lib/format";
+import { formatDate, humanize, stateTone } from "../lib/format";
 import type { SecurityEvent, Tone } from "../types";
 
 function eventItems(value: SecurityEvent[] | { items: SecurityEvent[] }): SecurityEvent[] {
@@ -114,32 +114,45 @@ export function SecurityPage() {
   const linkedIncidents = new Set(events.map((event) => event.incident_id).filter(Boolean)).size;
 
   return (
-    <div className="page security-page">
-      <header className="page-header">
+    <div className="page security-casebook">
+      <header className="page-header security-casebook__masthead">
         <div>
-          <p className="eyebrow">Runtime security</p>
+          <p className="eyebrow">Runtime casebook</p>
           <h1>Security events</h1>
-          <p>Tetragon detections normalized by CloudWard, with policy decisions and verified containment state.</p>
+          <p>Detections, policy decisions, and containment evidence in the order the control plane observed them.</p>
         </div>
         <button type="button" className="button button--secondary" onClick={refresh} disabled={loading}>
-          {loading ? "Refreshing…" : "Refresh events"}
+          {loading ? "Refreshing…" : "Refresh register"}
         </button>
       </header>
 
-      <div className="summary-grid" aria-label="Security event summary">
-        <article className="summary-card"><span>Runtime events</span><strong>{events.length}</strong><small>Normalized detections</small></article>
-        <article className={`summary-card ${highSeverity ? "summary-card--warn" : ""}`}><span>High severity</span><strong>{highSeverity}</strong><small>High and critical</small></article>
-        <article className="summary-card"><span>Contained</span><strong>{contained}</strong><small>Verified active quarantines</small></article>
-        <article className="summary-card"><span>Linked incidents</span><strong>{linkedIncidents}</strong><small>Using the shared state machine</small></article>
-      </div>
+      <section className="casebook-tally" aria-label="Security casebook tally">
+        <p className="casebook-tally__label">Open register</p>
+        <dl>
+          <div><dt>Recorded</dt><dd>{events.length}</dd></div>
+          <div className={highSeverity ? "casebook-tally__urgent" : undefined}><dt>High / critical</dt><dd>{highSeverity}</dd></div>
+          <div><dt>Contained</dt><dd>{contained}</dd></div>
+          <div><dt>Incident-linked</dt><dd>{linkedIncidents}</dd></div>
+        </dl>
+        <p className="casebook-tally__note">Counts reflect only normalized runtime events returned by the API.</p>
+      </section>
 
       {error ? <ErrorNotice title="Security data unavailable" message={error} retry={refresh} /> : null}
 
-      <Panel title="Runtime event register" description="Secret values and raw environment variables are redacted before events reach this view.">
-        <div className="filter-bar">
+      <section className="casebook-register" aria-labelledby="casebook-register-title">
+        <header className="casebook-register__header">
+          <div>
+            <p className="section-index">01 / Event register</p>
+            <h2 id="casebook-register-title">Recorded detections</h2>
+            <p>Raw environment values and secrets are redacted before an event reaches this register.</p>
+          </div>
+          <p className="casebook-register__count"><strong>{filtered.length}</strong><span>of {events.length} shown</span></p>
+        </header>
+
+        <div className="casebook-register__filters">
           <label className="field field--search">
-            <span>Search events</span>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Event, service, namespace, or incident" />
+            <span>Find a case</span>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Event, workload, namespace, incident" />
           </label>
           <label className="field">
             <span>Severity</span>
@@ -152,13 +165,12 @@ export function SecurityPage() {
               <option value="INFO">Info</option>
             </select>
           </label>
-          <p className="result-count">{filtered.length} of {events.length} events</p>
         </div>
 
         {loading && !events.length ? <LoadingPanel label="Loading security events" /> : filtered.length ? (
-          <div className="table-scroll">
+          <div className="table-scroll casebook-register__ledger">
             <table className="data-table security-table">
-              <thead><tr><th>Event</th><th>Workload</th><th>Severity</th><th>Incident</th><th>Containment</th><th>Risk</th><th>OPA</th><th>Time</th><th><span className="visually-hidden">Action</span></th></tr></thead>
+              <thead><tr><th>Detection</th><th>Subject</th><th>Severity</th><th>Incident</th><th>Containment</th><th>Risk</th><th>OPA</th><th>Observed</th><th><span className="visually-hidden">Action</span></th></tr></thead>
               <tbody>
                 {filtered.map((event) => {
                   const policy = policySummary(event.policy_decision);
@@ -169,7 +181,7 @@ export function SecurityPage() {
                       <td><span className="cell-stack"><strong>{humanize(eventType(event))}</strong><small>{event.summary ?? event.id}</small></span></td>
                       <td><span className="cell-stack"><strong>{workloadName(event)}</strong><small>{event.namespace ?? "Unknown namespace"}</small></span></td>
                       <td><StatusBadge label={humanize(event.severity)} tone={severityTone(event.severity)} dot /></td>
-                      <td>{event.incident_id ? <Link className="text-link" to={`/incidents/${event.incident_id}`}>Open incident</Link> : <span className="muted">Not linked</span>}</td>
+                      <td>{event.incident_id ? <Link className="text-link" to={`/incidents/${event.incident_id}`}>Review incident</Link> : <span className="muted">Not linked</span>}</td>
                       <td><StatusBadge label={humanize(event.containment_status ?? "Not contained")} tone={isContained ? "good" : "neutral"} /></td>
                       <td><span className="risk-value">{typeof event.risk_score === "number" ? event.risk_score : "—"}{typeof event.risk_score === "number" ? <small>/100</small> : null}</span></td>
                       <td><StatusBadge label={policy.label} tone={policy.tone} /></td>
@@ -192,9 +204,12 @@ export function SecurityPage() {
             </table>
           </div>
         ) : <EmptyState title="No matching security events" detail="No normalized runtime events match the current filters." />}
-      </Panel>
+      </section>
 
-      <p className="security-boundary-note">Containment is namespace-scoped, policy-evaluated, reversible, and verified against the active Cilium policy before it is reported as applied.</p>
+      <footer className="casebook-boundary">
+        <strong>Containment boundary</strong>
+        <span>Namespace-scoped · policy-evaluated · reversible · verified against active Cilium policy</span>
+      </footer>
     </div>
   );
 }

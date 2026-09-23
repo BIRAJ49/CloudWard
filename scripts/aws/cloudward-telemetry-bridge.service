@@ -1,0 +1,24 @@
+[Unit]
+Description=CloudWard loopback-only EKS telemetry bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cloudward
+Group=cloudward
+WorkingDirectory=/opt/cloudward
+Environment=HOME=/opt/cloudward
+Environment=KUBECONFIG=/opt/cloudward/.aws/cloudward-kubeconfig
+Environment=EXPECTED_KUBE_CONTEXT=cloudward-eks
+ExecStart=/opt/cloudward/scripts/port-forward-telemetry.sh
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/cloudward
+
+[Install]
+WantedBy=multi-user.target

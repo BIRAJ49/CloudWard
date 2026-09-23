@@ -23,15 +23,3 @@ class LLMProvider(ABC):
     @abstractmethod
     async def diagnose_incident(self, context: IncidentContext, *, model: str) -> ProviderResult:
         raise NotImplementedError
-
-    @abstractmethod
-    async def summarize_evidence(self, context: IncidentContext, *, model: str) -> ProviderResult:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def correlate_change(self, context: IncidentContext, *, model: str) -> ProviderResult:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def suggest_actions(self, context: IncidentContext, *, model: str) -> ProviderResult:
-        raise NotImplementedError

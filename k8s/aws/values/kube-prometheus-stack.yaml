@@ -1,0 +1,136 @@
+fullnameOverride: kube-prometheus-stack
+
+defaultRules:
+  create: true
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+    retention: 168h
+    nodeSelector:
+      cloudward.io/capacity-class: system
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 384Mi
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+    alertmanagerConfigSelector:
+      matchLabels:
+        cloudward.io/alertmanager-config: "true"
+    alertmanagerConfigNamespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: observability
+    alertmanagerConfigMatcherStrategy:
+      type: None
+  config:
+    global:
+      resolve_timeout: 2m
+    route:
+      receiver: sink
+      group_by: [alertname, namespace, service, environment]
+      group_wait: 10s
+      group_interval: 30s
+      repeat_interval: 4h
+    receivers:
+      - name: sink
+grafana:
+  enabled: true
+  defaultDashboardsEnabled: true
+  admin:
+    existingSecret: cloudward-grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: true
+    size: 2Gi
+  nodeSelector:
+    cloudward.io/capacity-class: system
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  service:
+    type: ClusterIP
+
+prometheusOperator:
+  nodeSelector:
+    cloudward.io/capacity-class: system
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+
+prometheus:
+  enabled: true
+  prometheusSpec:
+    replicas: 1
+    retention: 7d
+    retentionSize: 15GB
+    walCompression: true
+    enableAdminAPI: false
+    externalLabels:
+      cluster: cloudward-aws-eu-north-1
+      environment: aws
+    nodeSelector:
+      cloudward.io/capacity-class: system
+    resources:
+      requests:
+        cpu: 250m
+        memory: 768Mi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+
+kube-state-metrics:
+  nodeSelector:
+    cloudward.io/capacity-class: system
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 48Mi
+    limits:
+      cpu: 150m
+      memory: 128Mi

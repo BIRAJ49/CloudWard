@@ -35,7 +35,11 @@ export function FinOpsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [refreshKey, setRefreshKey] = useState(0);
-  const refresh = useCallback(() => setRefreshKey((value) => value + 1), []);
+  const refresh = useCallback(() => {
+    setLoading(true);
+    setError(undefined);
+    setRefreshKey((value) => value + 1);
+  }, []);
 
   useControlPlaneEvents(useCallback((event) => {
     const kind = String(event.type ?? event.event_type ?? "").toLowerCase();
@@ -44,8 +48,6 @@ export function FinOpsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setError(undefined);
     cloudWardApi.finopsRecommendations(controller.signal)
       .then((value) => setRecommendations(items(value)))
       .catch((reason: unknown) => {
@@ -69,7 +71,7 @@ export function FinOpsPage() {
   }, [recommendations]);
 
   return (
-    <div className="page">
+    <div className="page finops-page">
       <header className="page-header">
         <div><p className="eyebrow">Evidence-based efficiency</p><h1>FinOps</h1><p>Deterministic Kubernetes cost recommendations. CloudWard does not infer savings when OpenCost or utilization data is unavailable.</p></div>
         <button type="button" className="button button--secondary" onClick={refresh} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button>

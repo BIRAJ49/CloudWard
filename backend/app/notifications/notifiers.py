@@ -63,9 +63,7 @@ class Notifier(Protocol):
 class DashboardNotifier:
     channel = "dashboard"
 
-    async def deliver(
-        self, session: AsyncSession, message: NotificationMessage
-    ) -> DeliveryResult:
+    async def deliver(self, session: AsyncSession, message: NotificationMessage) -> DeliveryResult:
         await append_stream_event(
             session,
             event_type="notification.dashboard",
@@ -87,13 +85,13 @@ class TeamsNotifier:
         self.settings = settings
         self._client = client
 
-    async def deliver(
-        self, session: AsyncSession, message: NotificationMessage
-    ) -> DeliveryResult:
+    async def deliver(self, session: AsyncSession, message: NotificationMessage) -> DeliveryResult:
         del session
         if self.settings.teams_workflow_webhook_url is None:
             raise CloudWardError(
-                "TEAMS_NOT_CONFIGURED", "Microsoft Teams workflow webhook is not configured", status_code=503
+                "TEAMS_NOT_CONFIGURED",
+                "Microsoft Teams workflow webhook is not configured",
+                status_code=503,
             )
         url = self.settings.teams_workflow_webhook_url.get_secret_value()
         host = (urlsplit(url).hostname or "").lower()
@@ -118,7 +116,9 @@ class TeamsNotifier:
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise CloudWardError(
-                "TEAMS_DELIVERY_FAILED", "Microsoft Teams rejected the notification", status_code=502
+                "TEAMS_DELIVERY_FAILED",
+                "Microsoft Teams rejected the notification",
+                status_code=502,
             ) from exc
         finally:
             if owns_client:
@@ -135,9 +135,7 @@ class GitHubIssueNotifier:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    async def deliver(
-        self, session: AsyncSession, message: NotificationMessage
-    ) -> DeliveryResult:
+    async def deliver(self, session: AsyncSession, message: NotificationMessage) -> DeliveryResult:
         if message.incident_id is None:
             raise CloudWardError(
                 "GITHUB_ISSUE_INCIDENT_REQUIRED",
@@ -181,7 +179,10 @@ def _adaptive_card(message: NotificationMessage) -> dict[str, object]:
         {"title": "Environment", "value": message.environment},
         {"title": "Incident", "value": str(message.incident_id or "n/a")},
         {"title": "Cause", "value": message.cause},
-        {"title": "Risk", "value": f"{message.risk_score}/100" if message.risk_score is not None else "n/a"},
+        {
+            "title": "Risk",
+            "value": f"{message.risk_score}/100" if message.risk_score is not None else "n/a",
+        },
         {"title": "Policy", "value": message.policy},
         {"title": "Current state", "value": message.current_state},
     ]
@@ -195,11 +196,15 @@ def _adaptive_card(message: NotificationMessage) -> dict[str, object]:
             {
                 "type": "ActionSet",
                 "actions": [
-                    {"type": "Action.OpenUrl", "title": "Open CloudWard", "url": message.dashboard_url}
+                    {
+                        "type": "Action.OpenUrl",
+                        "title": "Open CloudWard",
+                        "url": message.dashboard_url,
+                    }
                 ],
             }
         )
-    return redact(
+    payload = redact(
         {
             "type": "message",
             "attachments": [
@@ -215,6 +220,7 @@ def _adaptive_card(message: NotificationMessage) -> dict[str, object]:
             ],
         }
     )
+    return payload if isinstance(payload, dict) else {}
 
 
 def _github_issue_body(message: NotificationMessage) -> str:

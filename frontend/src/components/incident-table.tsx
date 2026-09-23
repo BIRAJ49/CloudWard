@@ -20,7 +20,7 @@ export function IncidentTable({ incidents, services = [] }: { incidents: Inciden
         <caption className="visually-hidden">CloudWard incidents returned by the API</caption>
         <thead>
           <tr>
-            <th scope="col">Incident</th>
+            <th className="data-table__primary" scope="col">Incident</th>
             <th scope="col">Service</th>
             <th scope="col">Category</th>
             <th scope="col">Severity</th>
@@ -35,24 +35,28 @@ export function IncidentTable({ incidents, services = [] }: { incidents: Inciden
         <tbody>
           {incidents.map((incident) => {
             const tone = stateTone(incident.state);
+            const severity = String(incident.severity || "unknown").toLowerCase();
+            const riskLevel = typeof incident.risk_score === "number"
+              ? incident.risk_score >= 70 ? "high" : incident.risk_score >= 40 ? "medium" : "low"
+              : "unknown";
             return (
-              <tr key={incident.id}>
+              <tr className="incident-row" data-severity={severity} key={incident.id}>
                 <td data-label="Incident">
-                  <Link className="incident-link" to={`/incidents/${encodeURIComponent(incident.id)}`}>
-                    <strong>{incident.title || humanize(incident.incident_type) || "Operational incident"}</strong>
-                    <code>{incident.id}</code>
+                  <Link className="incident-link" to={`/incidents/${encodeURIComponent(incident.id)}`} aria-label={`Open incident ${incident.title || incident.id}`}>
+                    <span className="incident-link__title">{incident.title || humanize(incident.incident_type) || "Operational incident"}</span>
+                    <code className="incident-link__id">{incident.id}</code>
                   </Link>
                 </td>
                 <td data-label="Service"><span className="cell-stack"><strong>{serviceName(incident, services)}</strong><small>{incident.incident_type ? humanize(incident.incident_type) : "Type not recorded"}</small></span></td>
                 <td data-label="Category">{humanize(String(incident.category ?? incident.incident_type ?? "Unknown"))}</td>
-                <td data-label="Severity">{humanize(incident.severity)}</td>
+                <td data-label="Severity"><span className="severity-label" data-severity={severity}><i aria-hidden="true" />{humanize(incident.severity)}</span></td>
                 <td data-label="Environment"><span className="environment-label">{incident.environment ?? "Unknown"}</span></td>
                 <td data-label="State">
                   <span className={`state-label state-label--${tone}`}><i aria-hidden="true" />{humanize(incident.state)}</span>
                 </td>
-                <td data-label="Risk">{typeof incident.risk_score === "number" ? <span className="risk-value">{incident.risk_score}<small>/100</small></span> : <span className="muted">Not scored</span>}</td>
-                <td data-label="Created"><time>{formatDate(incident.created_at)}</time></td>
-                <td data-label="Duration">{duration(incident)}</td>
+                <td data-label="Risk">{typeof incident.risk_score === "number" ? <span className="risk-value" data-level={riskLevel}><strong>{incident.risk_score}</strong><small>/100</small></span> : <span className="muted">Not scored</span>}</td>
+                <td data-label="Created"><time dateTime={incident.created_at ?? undefined}>{formatDate(incident.created_at)}</time></td>
+                <td className="data-table__numeric" data-label="Duration">{duration(incident)}</td>
                 <td data-label="Resolution">{humanize(incident.resolution_source ?? "Pending")}</td>
               </tr>
             );

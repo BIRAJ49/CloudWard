@@ -50,15 +50,19 @@ async def apply_quarantine(
 ) -> QuarantineRecord:
     event, incident = await _event_and_incident(session, event_id)
     existing = (
-        await session.execute(
-            select(QuarantineRecord)
-            .where(
-                QuarantineRecord.security_event_id == event.id,
-                QuarantineRecord.status != ContainmentStatus.REMOVED,
+        (
+            await session.execute(
+                select(QuarantineRecord)
+                .where(
+                    QuarantineRecord.security_event_id == event.id,
+                    QuarantineRecord.status != ContainmentStatus.REMOVED,
+                )
+                .order_by(QuarantineRecord.created_at.desc())
             )
-            .order_by(QuarantineRecord.created_at.desc())
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if existing is not None and existing.status == ContainmentStatus.CONTAINED:
         return existing
     if existing is not None and existing.status == ContainmentStatus.APPLYING:
@@ -134,9 +138,7 @@ async def apply_quarantine(
     )
     await session.flush()
     try:
-        before_probe = await kubernetes.probe_controlled_security_egress(
-            event.namespace, event.pod
-        )
+        before_probe = await kubernetes.probe_controlled_security_egress(event.namespace, event.pod)
         if not before_probe.reachable:
             raise CloudWardError(
                 "QUARANTINE_BASELINE_FAILED",
@@ -268,12 +270,16 @@ async def remove_quarantine(
 ) -> QuarantineRecord:
     event, incident = await _event_and_incident(session, event_id)
     record = (
-        await session.execute(
-            select(QuarantineRecord)
-            .where(QuarantineRecord.security_event_id == event.id)
-            .order_by(QuarantineRecord.created_at.desc())
+        (
+            await session.execute(
+                select(QuarantineRecord)
+                .where(QuarantineRecord.security_event_id == event.id)
+                .order_by(QuarantineRecord.created_at.desc())
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if record is None:
         raise CloudWardError(
             "QUARANTINE_NOT_FOUND", "No quarantine exists for this security event", status_code=404
@@ -415,19 +421,21 @@ async def _event_and_incident(
     return event, incident
 
 
-async def _proposal_for_apply(
-    session: AsyncSession, event: SecurityEvent
-) -> ActionProposal:
+async def _proposal_for_apply(session: AsyncSession, event: SecurityEvent) -> ActionProposal:
     proposal = (
-        await session.execute(
-            select(ActionProposal)
-            .where(
-                ActionProposal.incident_id == event.incident_id,
-                ActionProposal.action_type == ActionType.APPLY_QUARANTINE,
+        (
+            await session.execute(
+                select(ActionProposal)
+                .where(
+                    ActionProposal.incident_id == event.incident_id,
+                    ActionProposal.action_type == ActionType.APPLY_QUARANTINE,
+                )
+                .order_by(ActionProposal.created_at.desc())
             )
-            .order_by(ActionProposal.created_at.desc())
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if proposal is None:
         raise CloudWardError(
             "QUARANTINE_PROPOSAL_NOT_FOUND",

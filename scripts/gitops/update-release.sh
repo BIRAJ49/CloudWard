@@ -101,6 +101,7 @@ yq eval '
   .cloudward-demo.image.tag = "" |
   .cloudward-demo.image.digest = strenv(CLOUDWARD_IMAGE_DIGEST) |
   .cloudward-demo.image.requireDigest = true |
+  .cloudward-demo.release.identifier = strenv(CLOUDWARD_SOURCE_COMMIT) |
   .cloudward-demo.release.sourceCommit = strenv(CLOUDWARD_SOURCE_COMMIT) |
   .cloudward-demo.release.sbomReference = strenv(CLOUDWARD_SBOM_REFERENCE) |
   .cloudward-demo.release.securityScan = strenv(CLOUDWARD_SCAN_STATUS) |

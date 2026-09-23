@@ -11,7 +11,11 @@ from app.demo.scenarios import get_scenario
 from app.errors import CloudWardError
 from app.observability.providers import TelemetryWindow
 from app.remediation.actions import ActionType
-from app.remediation.execution import RollbackCoordinator, RollbackDisposition, action_idempotency_key
+from app.remediation.execution import (
+    RollbackCoordinator,
+    RollbackDisposition,
+    action_idempotency_key,
+)
 from app.remediation.gitops import CONTROLLED_BAD_TAG, LocalGitOpsImageWriter
 
 
@@ -32,7 +36,10 @@ def test_alert_fingerprint_uses_only_stable_labels() -> None:
     second = first.model_copy(
         update={"labels": {**first.labels, "pod": "pod-b"}, "fingerprint": "untrusted-two"}
     )
-    assert NormalizedAlert.from_alertmanager(first).fingerprint == NormalizedAlert.from_alertmanager(second).fingerprint
+    assert (
+        NormalizedAlert.from_alertmanager(first).fingerprint
+        == NormalizedAlert.from_alertmanager(second).fingerprint
+    )
 
 
 def test_telemetry_window_rejects_unbounded_query() -> None:
@@ -55,24 +62,33 @@ def test_settings_reject_incident_lab_namespace_override() -> None:
 
 def test_rollback_requires_low_risk_reversible_action() -> None:
     coordinator = RollbackCoordinator(automatic_max_risk=39)
-    assert coordinator.decide(
-        action=ActionType.SCALE_STAGING_DEPLOYMENT,
-        risk_score=20,
-        rollback_enabled=True,
-        policy_allows_rollback=True,
-    ) == RollbackDisposition.AUTOMATIC
-    assert coordinator.decide(
-        action=ActionType.SCALE_STAGING_DEPLOYMENT,
-        risk_score=50,
-        rollback_enabled=True,
-        policy_allows_rollback=True,
-    ) == RollbackDisposition.AWAITING_APPROVAL
-    assert coordinator.decide(
-        action=ActionType.REVERT_IMAGE,
-        risk_score=20,
-        rollback_enabled=True,
-        policy_allows_rollback=True,
-    ) == RollbackDisposition.AWAITING_APPROVAL
+    assert (
+        coordinator.decide(
+            action=ActionType.SCALE_STAGING_DEPLOYMENT,
+            risk_score=20,
+            rollback_enabled=True,
+            policy_allows_rollback=True,
+        )
+        == RollbackDisposition.AUTOMATIC
+    )
+    assert (
+        coordinator.decide(
+            action=ActionType.SCALE_STAGING_DEPLOYMENT,
+            risk_score=50,
+            rollback_enabled=True,
+            policy_allows_rollback=True,
+        )
+        == RollbackDisposition.AWAITING_APPROVAL
+    )
+    assert (
+        coordinator.decide(
+            action=ActionType.REVERT_IMAGE,
+            risk_score=20,
+            rollback_enabled=True,
+            policy_allows_rollback=True,
+        )
+        == RollbackDisposition.AWAITING_APPROVAL
+    )
 
 
 def test_action_idempotency_key_is_canonical() -> None:
@@ -102,9 +118,7 @@ def test_arbitrary_scenario_is_not_in_catalog() -> None:
 
 @pytest.mark.asyncio
 async def test_gitops_rollback_requires_approval_before_git_is_called() -> None:
-    writer = LocalGitOpsImageWriter(
-        Settings(APP_ENV="test", LOCAL_GITOPS_WRITE_ENABLED=True)
-    )
+    writer = LocalGitOpsImageWriter(Settings(APP_ENV="test", LOCAL_GITOPS_WRITE_ENABLED=True))
     with pytest.raises(CloudWardError) as caught:
         await writer.approved_rollback(
             incident_id=uuid.uuid4(),

@@ -23,9 +23,6 @@ async def list_audit_events(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[AuditEvent]:
     result = await session.execute(
-        select(AuditEvent)
-        .order_by(AuditEvent.created_at.desc())
-        .limit(limit)
-        .offset(offset)
+        select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(limit).offset(offset)
     )
     return list(result.scalars())

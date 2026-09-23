@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["enabled", "targets", "environment", "intervalSeconds"],
+  "properties": {
+    "enabled": {"type": "boolean"},
+    "clusterId": {"type": "string"},
+    "environment": {"enum": ["staging", "production"]},
+    "intervalSeconds": {"type": "integer", "minimum": 15, "maximum": 120},
+    "targets": {
+      "type": "array", "minItems": 1, "maxItems": 4,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["namespace", "service", "deployment"],
+        "properties": {
+          "namespace": {"enum": ["cloudward-staging", "cloudward-production"]},
+          "service": {"type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+          "deployment": {"type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9][a-z0-9.-]*$"}
+        }
+      }
+    }
+  },
+  "if": {"properties": {"enabled": {"const": true}}},
+  "then": {"properties": {
+    "clusterId": {"pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},
+    "controlPlaneCIDRs": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "kubernetesApiCIDRs": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+  }}
+}

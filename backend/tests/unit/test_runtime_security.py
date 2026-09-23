@@ -5,13 +5,12 @@ import hmac
 import json
 import time
 import uuid
-from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
 from kubernetes_asyncio.client.exceptions import ApiException
 
-from app.db.models import SecurityCategory
+from app.errors import CloudWardError
 from app.kubernetes.executor import KubernetesExecutor
 from app.policies.opa import PolicyResult
 from app.security.normalization import event_fingerprint, normalized_payload
@@ -166,7 +165,7 @@ async def test_quarantine_is_targeted_reversible_and_wrong_namespace_is_denied()
     )
     assert not removed.policy_exists
     assert not removed.target_label_matches
-    with pytest.raises(Exception):
+    with pytest.raises(CloudWardError):
         await executor.apply_quarantine_policy(
             "cloudward-production",
             "cloudward-demo-abcde",
@@ -205,7 +204,5 @@ async def test_webhook_rejects_unauthenticated_invalid_and_oversized_payloads(
     assert response.status_code == 422
 
     oversized = b"x" * (settings.tetragon_webhook_max_body_bytes + 1)
-    response = await api_client.post(
-        "/api/v1/webhooks/security/tetragon", content=oversized
-    )
+    response = await api_client.post("/api/v1/webhooks/security/tetragon", content=oversized)
     assert response.status_code == 413

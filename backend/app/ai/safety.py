@@ -30,9 +30,7 @@ async def evaluate_ai_admission(
 ) -> AIAdmission:
     """Serialize per-incident admission and open the circuit on consecutive failures."""
 
-    await session.execute(
-        select(Incident.id).where(Incident.id == incident_id).with_for_update()
-    )
+    await session.execute(select(Incident.id).where(Incident.id == incident_id).with_for_update())
     used_calls = int(
         (
             await session.execute(
@@ -61,9 +59,8 @@ async def evaluate_ai_admission(
             )
         ).scalars()
     )
-    if (
-        len(recent_statuses) >= settings.ai_circuit_breaker_failure_threshold
-        and all(status == "FAILED" for status in recent_statuses)
+    if len(recent_statuses) >= settings.ai_circuit_breaker_failure_threshold and all(
+        status == "FAILED" for status in recent_statuses
     ):
         return AIAdmission(False, 0, "AI_CIRCUIT_OPEN")
     return AIAdmission(True, min(remaining, 3))

@@ -158,7 +158,12 @@ SCENARIOS: tuple[ChaosScenario, ...] = (
         duration_seconds=30,
         expected_alert="FinOpsAnalysisComplete",
         expected_runbook="finops.node-efficiency",
-        expected_signals=("node_allocatable", "scheduled_requests", "node_usage_p95", "opencost_allocation"),
+        expected_signals=(
+            "node_allocatable",
+            "scheduled_requests",
+            "node_usage_p95",
+            "opencost_allocation",
+        ),
         cleanup_strategy="analysis_only_no_live_mutation",
         max_runtime_seconds=180,
     ),

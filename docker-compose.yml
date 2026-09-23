@@ -21,8 +21,8 @@ x-api-environment: &api-environment
   GITHUB_REDIRECT_URI: http://localhost:${CLOUDWARD_PORT:-8080}/api/v1/auth/github/callback
   SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
   DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-true}
-  ALERTMANAGER_WEBHOOK_TOKEN: ${ALERTMANAGER_WEBHOOK_TOKEN:-cloudward-local-alert-token-32-chars-minimum}
-  WORKER_INTERNAL_TOKEN: ${WORKER_INTERNAL_TOKEN:-cloudward-local-worker-token-32-chars-minimum}
+  ALERTMANAGER_WEBHOOK_TOKEN: ${ALERTMANAGER_WEBHOOK_TOKEN:?set a unique random alert token}
+  WORKER_INTERNAL_TOKEN: ${WORKER_INTERNAL_TOKEN:?set a unique random worker token}
   PROMETHEUS_URL: ${PROMETHEUS_URL:-http://host.docker.internal:9090}
   LOKI_URL: ${LOKI_URL:-http://host.docker.internal:3100}
   TEMPO_URL: ${TEMPO_URL:-http://host.docker.internal:3200}
@@ -39,7 +39,7 @@ x-api-environment: &api-environment
   LOCAL_GITOPS_WRITE_ENABLED: ${LOCAL_GITOPS_WRITE_ENABLED:-true}
   LOCAL_GITOPS_REPO_URL: git://host.docker.internal:19418/cloudward-gitops.git
   LOCAL_GITOPS_TIMEOUT_SECONDS: ${LOCAL_GITOPS_TIMEOUT_SECONDS:-20}
-  TETRAGON_WEBHOOK_SECRET: ${TETRAGON_WEBHOOK_SECRET:-cloudward-local-tetragon-token-32-chars-minimum}
+  TETRAGON_WEBHOOK_SECRET: ${TETRAGON_WEBHOOK_SECRET:?set a unique random Tetragon secret}
   TETRAGON_WEBHOOK_MAX_BODY_BYTES: ${TETRAGON_WEBHOOK_MAX_BODY_BYTES:-131072}
   TETRAGON_WEBHOOK_MAX_EVENTS_PER_MINUTE: ${TETRAGON_WEBHOOK_MAX_EVENTS_PER_MINUTE:-120}
   TETRAGON_WEBHOOK_MAX_CLOCK_SKEW_SECONDS: ${TETRAGON_WEBHOOK_MAX_CLOCK_SKEW_SECONDS:-300}
@@ -160,7 +160,12 @@ services:
       - /bin/sh
       - -ec
       - alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      CLUSTER_AGENT_ENABLED: ${CLUSTER_AGENT_ENABLED:-false}
+      CLUSTER_AGENT_CLUSTER_ID: ${CLUSTER_AGENT_CLUSTER_ID:-}
+      CLUSTER_AGENT_TOKEN: ${CLUSTER_AGENT_TOKEN:-}
+      CLUSTER_AGENT_FRESHNESS_SECONDS: ${CLUSTER_AGENT_FRESHNESS_SECONDS:-180}
     depends_on:
       postgres:
         condition: service_healthy
@@ -204,7 +209,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       REDIS_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      WORKER_INTERNAL_TOKEN: ${WORKER_INTERNAL_TOKEN:-cloudward-local-worker-token-32-chars-minimum}
+      WORKER_INTERNAL_TOKEN: ${WORKER_INTERNAL_TOKEN:?set a unique random worker token}
       CLOUDWARD_INTERNAL_API_URL: http://api:8000/api/v1/internal
     depends_on:
       redis:

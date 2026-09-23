@@ -1,0 +1,55 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: cloudward-guard-executor-mutations
+  annotations:
+    policies.kyverno.io/title: Guard CloudWard executor mutations
+    policies.kyverno.io/category: CloudWard Safety Boundary
+    policies.kyverno.io/severity: critical
+spec:
+  admission: true
+  background: false
+  validationFailureAction: Enforce
+  webhookConfiguration:
+    failurePolicy: Fail
+    timeoutSeconds: 10
+  rules:
+    - name: executor-may-delete-only-demo-pods
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+              namespaces: ["cloudward-staging"]
+              operations: ["DELETE"]
+            subjects:
+              - kind: Group
+                name: cloudward:executor
+      validate:
+        message: CloudWard executor may delete only staging pods labeled cloudward.io/demo-target=true.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.oldObject.metadata.labels.\"cloudward.io/demo-target\" || '' }}"
+                operator: NotEquals
+                value: "true"
+    - name: executor-quarantine-name-and-target
+      match:
+        any:
+          - resources:
+              kinds: ["CiliumNetworkPolicy"]
+              namespaces: ["cloudward-staging"]
+              operations: ["CREATE", "UPDATE"]
+            subjects:
+              - kind: Group
+                name: cloudward:executor
+      validate:
+        message: CloudWard executor may manage only named quarantine policies targeting demo workloads.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.name || '' }}"
+                operator: NotMatches
+                value: "cloudward-quarantine-*"
+              - key: "{{ request.object.spec.endpointSelector.matchLabels.\"cloudward.io/demo-target\" || '' }}"
+                operator: NotEquals
+                value: "true"

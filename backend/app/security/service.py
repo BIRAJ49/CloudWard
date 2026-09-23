@@ -270,9 +270,7 @@ async def ingest_security_event(
     )
     decision = await opa.evaluate(policy_input)
     decision_name = str(
-        decision.model_dump(mode="json").get(
-            "decision", "ALLOW" if decision.allowed else "DENY"
-        )
+        decision.model_dump(mode="json").get("decision", "ALLOW" if decision.allowed else "DENY")
     )
     security_event.risk_score = risk.score
     security_event.policy_decision = decision_name

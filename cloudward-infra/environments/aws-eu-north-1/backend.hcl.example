@@ -1,0 +1,2 @@
+bucket = "REPLACE_WITH_BOOTSTRAP_OUTPUT_BUCKET_NAME"
+region = "eu-north-1"

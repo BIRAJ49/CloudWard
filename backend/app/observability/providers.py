@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+from collections.abc import Iterable
 from datetime import datetime
+from itertools import islice
 from typing import Any, Protocol
 
 import httpx
@@ -50,26 +54,39 @@ class LogsProvider(Protocol):
 
 
 class TracesProvider(Protocol):
-    async def search(self, service: str, window: TelemetryWindow) -> TelemetryResult: ...
+    async def search(
+        self, service: str, window: TelemetryWindow, *, namespace: str
+    ) -> TelemetryResult: ...
 
 
 class _HTTPProvider:
+    MAX_RESPONSE_BYTES = 1_048_576
+
     def __init__(self, base_url: str, *, timeout_seconds: float, max_samples: int) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.max_samples = max_samples
 
-    async def _get(self, path: str, params: dict[str, str | int]) -> dict[str, Any]:
+    async def _get(self, path: str, params: dict[str, str | int | float]) -> dict[str, Any]:
         try:
-            async with httpx.AsyncClient(
-                base_url=self.base_url,
-                timeout=httpx.Timeout(self.timeout_seconds),
-                follow_redirects=False,
-            ) as client:
-                response = await client.get(path, params=params)
-                response.raise_for_status()
-                payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
+            async with (
+                asyncio.timeout(self.timeout_seconds),
+                httpx.AsyncClient(
+                    base_url=self.base_url,
+                    timeout=httpx.Timeout(self.timeout_seconds),
+                    follow_redirects=False,
+                    trust_env=False,
+                ) as client,
+            ):
+                async with client.stream("GET", path, params=params) as response:
+                    response.raise_for_status()
+                    body = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        if len(body) + len(chunk) > self.MAX_RESPONSE_BYTES:
+                            raise ValueError("telemetry response exceeds byte limit")
+                        body.extend(chunk)
+                    payload = json.loads(body)
+        except (httpx.HTTPError, ValueError, TimeoutError) as exc:
             raise CloudWardError(
                 "TELEMETRY_PROVIDER_UNAVAILABLE",
                 "An observability provider could not satisfy the bounded evidence query",
@@ -77,12 +94,23 @@ class _HTTPProvider:
                 details={"provider": type(self).__name__, "reason": type(exc).__name__},
             ) from exc
         if not isinstance(payload, dict):
-            raise CloudWardError("INVALID_TELEMETRY_RESPONSE", "Telemetry response was not an object")
+            raise CloudWardError(
+                "INVALID_TELEMETRY_RESPONSE", "Telemetry response was not an object"
+            )
         return payload
 
-    def _bounded(self, samples: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], bool]:
-        sanitized = [redact(sample) for sample in samples[: self.max_samples]]
-        return sanitized, len(samples) > self.max_samples
+    def _bounded(self, samples: Iterable[Any]) -> tuple[list[dict[str, Any]], bool]:
+        bounded = list(islice((s for s in samples if isinstance(s, dict)), self.max_samples + 1))
+        sanitized = [redact(sample) for sample in bounded[: self.max_samples]]
+        return sanitized, len(bounded) > self.max_samples
+
+    @staticmethod
+    def _result(payload: dict[str, Any]) -> list[Any]:
+        data = payload.get("data")
+        result = data.get("result") if isinstance(data, dict) else None
+        if not isinstance(result, list):
+            raise CloudWardError("INVALID_TELEMETRY_RESPONSE", "Telemetry result was not a list")
+        return result
 
 
 class PrometheusMetricsProvider(_HTTPProvider):
@@ -98,8 +126,7 @@ class PrometheusMetricsProvider(_HTTPProvider):
         )
         if payload.get("status") != "success":
             raise CloudWardError("INVALID_TELEMETRY_RESPONSE", "Prometheus rejected the query")
-        raw = payload.get("data", {}).get("result", [])
-        samples, truncated = self._bounded(raw if isinstance(raw, list) else [])
+        samples, truncated = self._bounded(self._result(payload))
         return TelemetryResult(
             provider="prometheus",
             query=query,
@@ -124,20 +151,14 @@ class LokiLogsProvider(_HTTPProvider):
         )
         if payload.get("status") != "success":
             raise CloudWardError("INVALID_TELEMETRY_RESPONSE", "Loki rejected the query")
-        streams = payload.get("data", {}).get("result", [])
-        flattened: list[dict[str, Any]] = []
-        if isinstance(streams, list):
-            for stream in streams:
-                if not isinstance(stream, dict):
-                    continue
-                labels = stream.get("stream", {})
-                values = stream.get("values", [])
-                for value in values if isinstance(values, list) else []:
-                    if isinstance(value, list) and len(value) == 2:
-                        flattened.append(
-                            {"timestamp_ns": value[0], "line": value[1], "labels": labels}
-                        )
-        samples, truncated = self._bounded(flattened)
+        streams = self._result(payload)
+        samples, truncated = self._bounded(
+            {"timestamp_ns": value[0], "line": value[1], "labels": stream.get("stream", {})}
+            for stream in streams
+            if isinstance(stream, dict) and isinstance(stream.get("values"), list)
+            for value in stream["values"]
+            if isinstance(value, list) and len(value) == 2
+        )
         return TelemetryResult(
             provider="loki",
             query=query,
@@ -149,8 +170,13 @@ class LokiLogsProvider(_HTTPProvider):
 
 
 class TempoTracesProvider(_HTTPProvider):
-    async def search(self, service: str, window: TelemetryWindow) -> TelemetryResult:
-        query = f'{{ resource.service.name = "{service}" }}'
+    async def search(
+        self, service: str, window: TelemetryWindow, *, namespace: str
+    ) -> TelemetryResult:
+        query = (
+            f"{{ resource.service.name = {json.dumps(service)}"
+            f" && resource.k8s.namespace.name = {json.dumps(namespace)} }}"
+        )
         payload = await self._get(
             "/api/search",
             {

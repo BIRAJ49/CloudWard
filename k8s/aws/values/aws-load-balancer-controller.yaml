@@ -1,0 +1,23 @@
+clusterName: cloudward-aws-eu-north-1
+region: eu-north-1
+
+serviceAccount:
+  create: false
+  name: aws-load-balancer-controller
+
+replicaCount: 1
+nodeSelector:
+  cloudward.io/capacity-class: system
+
+defaultTargetType: ip
+enableServiceMutatorWebhook: false
+featureGates:
+  ALBGatewayAPI: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 192Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

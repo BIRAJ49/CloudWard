@@ -19,6 +19,7 @@ from app.errors import CloudWardError
 from app.logging import correlation_id_context
 from app.metrics import WEBHOOK_EVENTS_TOTAL
 from app.security.rate_limit import alertmanager_rate_limit
+from app.security.webhook_auth import read_bounded_body
 
 MAX_ALERTMANAGER_BODY_BYTES = 1_048_576
 ALERT_TASK = "cloudward.tasks.alerts.process"
@@ -57,11 +58,9 @@ async def alertmanager_webhook(
         raise CloudWardError(
             "WEBHOOK_AUTHENTICATION_FAILED", "Alertmanager authentication failed", status_code=401
         )
-    raw = await request.body()
-    if len(raw) > MAX_ALERTMANAGER_BODY_BYTES:
-        raise CloudWardError(
-            "WEBHOOK_PAYLOAD_TOO_LARGE", "Alertmanager payload is too large", status_code=413
-        )
+    raw = await read_bounded_body(
+        request, MAX_ALERTMANAGER_BODY_BYTES, error_code="WEBHOOK_PAYLOAD_TOO_LARGE"
+    )
     try:
         payload = AlertmanagerPayload.model_validate(json.loads(raw))
     except (json.JSONDecodeError, ValueError) as exc:

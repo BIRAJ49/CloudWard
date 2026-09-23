@@ -35,8 +35,9 @@ from app.rbac.policy import Role
 from app.remediation.actions import ActionType
 
 
-def enum_type(enum_class: type[StrEnum], name: str) -> Enum:
-    return Enum(enum_class, name=name, native_enum=False, validate_strings=True)
+def enum_type(enum_class: type[StrEnum], name: str, *, length: int | None = None) -> Enum:
+    options = {} if length is None else {"length": length}
+    return Enum(enum_class, name=name, native_enum=False, validate_strings=True, **options)
 
 
 class Environment(StrEnum):
@@ -335,6 +336,7 @@ class ActionExecution(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "action_executions"
     __table_args__ = (
         UniqueConstraint("incident_id", "attempt"),
+        UniqueConstraint("idempotency_key"),
         CheckConstraint("attempt >= 1 AND attempt <= 3", name="attempt_range"),
     )
 
@@ -358,7 +360,7 @@ class ActionExecution(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         DateTime(timezone=True), default=utc_now, nullable=False
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    idempotency_key: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(64))
     rollback_of_execution_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("action_executions.id", ondelete="RESTRICT")
     )
@@ -467,9 +469,9 @@ class StreamEvent(Base):
 class Approval(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "approvals"
     __table_args__ = (
-        UniqueConstraint(
-            "proposal_id", "proposal_version", name="uq_approvals_proposal_version"
-        ),
+        UniqueConstraint("proposal_id", "proposal_version", name="uq_approvals_proposal_version"),
+        CheckConstraint("risk_score >= 0 AND risk_score <= 100", name="approval_risk_score_range"),
+        CheckConstraint("proposal_version >= 1", name="approval_proposal_version_positive"),
     )
 
     incident_id: Mapped[uuid.UUID] = mapped_column(
@@ -480,7 +482,7 @@ class Approval(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     actor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     decision: Mapped[ApprovalDecision] = mapped_column(
-        enum_type(ApprovalDecision, "approval_decision"),
+        enum_type(ApprovalDecision, "approval_decision", length=16),
         nullable=False,
         default=ApprovalDecision.PENDING,
         index=True,
@@ -488,7 +490,7 @@ class Approval(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     reason: Mapped[str | None] = mapped_column(Text)
     action: Mapped[str] = mapped_column(String(128), nullable=False)
     environment: Mapped[Environment] = mapped_column(
-        enum_type(Environment, "approval_environment"), nullable=False
+        enum_type(Environment, "approval_environment", length=32), nullable=False
     )
     risk_score: Mapped[int] = mapped_column(Integer, nullable=False)
     blast_radius: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -558,16 +560,15 @@ class SecurityEvent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "security_events"
 
     __table_args__ = (
-        UniqueConstraint("source", "fingerprint"),
+        UniqueConstraint("source", "fingerprint", name="uq_security_events_source_fingerprint"),
         Index("ix_security_events_occurred_at", "occurred_at"),
-        Index("ix_security_events_incident_id", "incident_id"),
     )
 
     correlation_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     incident_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("incidents.id", ondelete="SET NULL"), index=True
     )
-    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    source: Mapped[str] = mapped_column(String(255), nullable=False)
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     event_type: Mapped[SecurityCategory] = mapped_column(
         enum_type(SecurityCategory, "security_event_category"), nullable=False
@@ -627,20 +628,20 @@ class QuarantineRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class FinOpsRecommendation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "finops_recommendations"
     __table_args__ = (
-        UniqueConstraint(
-            "source_fingerprint", name="uq_finops_recommendations_source_fingerprint"
-        ),
+        UniqueConstraint("source_fingerprint", name="uq_finops_recommendations_source_fingerprint"),
         Index("ix_finops_status_created", "status", "created_at"),
+        CheckConstraint("risk_score >= 0 AND risk_score <= 100", name="finops_risk_score_range"),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="finops_confidence_range"),
     )
 
     cluster_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("clusters.id"))
     service: Mapped[str] = mapped_column(String(253), nullable=False)
     environment: Mapped[Environment] = mapped_column(
-        enum_type(Environment, "finops_environment"), nullable=False
+        enum_type(Environment, "finops_environment", length=32), nullable=False
     )
     recommendation_type: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[FinOpsStatus] = mapped_column(
-        enum_type(FinOpsStatus, "finops_status"),
+        enum_type(FinOpsStatus, "finops_status", length=32),
         nullable=False,
         default=FinOpsStatus.DETECTED,
     )
@@ -668,9 +669,9 @@ class FinOpsRecommendation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class Notification(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "notifications"
     __table_args__ = (
-        UniqueConstraint(
-            "channel", "dedupe_key", name="uq_notifications_channel_dedupe_key"
-        ),
+        UniqueConstraint("channel", "dedupe_key", name="uq_notifications_channel_dedupe_key"),
+        CheckConstraint("attempts >= 0", name="notification_attempts_nonnegative"),
+        CheckConstraint("max_attempts >= 1", name="notification_max_attempts_positive"),
     )
 
     incident_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("incidents.id"))

@@ -1,0 +1,34 @@
+# Replace the .invalid host through the environment overlay before sync. The
+# receiver is intentionally authenticated and cannot deliver without the
+# separately provisioned cloudward-alertmanager-webhook Secret.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: cloudward-aws-webhook
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: cloudward
+    cloudward.io/alertmanager-config: "true"
+spec:
+  route:
+    receiver: cloudward-aws-webhook
+    groupBy: [alertname, namespace, service, environment]
+    groupWait: 10s
+    groupInterval: 30s
+    repeatInterval: 2m
+    matchers:
+      - name: cloudward_notify
+        value: "true"
+        matchType: =
+  receivers:
+    - name: cloudward-aws-webhook
+      webhookConfigs:
+        - url: https://control-plane.cloudward.example.invalid/api/v1/webhooks/alertmanager
+          sendResolved: true
+          maxAlerts: 20
+          httpConfig:
+            authorization:
+              type: Bearer
+              credentials:
+                name: cloudward-alertmanager-webhook
+                key: token

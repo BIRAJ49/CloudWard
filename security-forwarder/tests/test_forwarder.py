@@ -1,4 +1,10 @@
-from forwarder import normalize
+import io
+from urllib.error import HTTPError
+from urllib.request import Request, build_opener
+
+import pytest
+
+from forwarder import NoRedirect, normalize
 
 
 def test_normalizes_only_allowlisted_demo_policy() -> None:
@@ -30,3 +36,19 @@ def test_normalizes_only_allowlisted_demo_policy() -> None:
 def test_ignores_unrelated_policy() -> None:
     raw = {"process_kprobe": {"policy_name": "unrelated", "process": {}}}
     assert normalize(raw, node_name="node-1", sequence=1) is None
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+def test_signed_event_redirects_are_rejected(status):
+    opener = build_opener(NoRedirect())
+    request = Request("https://cloudward.example/webhook", data=b"{}")
+    with pytest.raises(HTTPError) as error:
+        opener.error(
+            "http",
+            request,
+            io.BytesIO(),
+            status,
+            "Redirect",
+            {"location": "https://untrusted.example/webhook"},
+        )
+    assert error.value.code == status

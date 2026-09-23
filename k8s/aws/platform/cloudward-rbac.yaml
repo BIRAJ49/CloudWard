@@ -1,0 +1,74 @@
+# Terraform maps the EC2 control-plane IAM role to these Kubernetes groups
+# through an EKS access entry. No role grants access to Secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cloudward-workload-observer
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes", "pods", "pods/status", "services", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/status", "replicasets", "replicasets/status", "statefulsets", "statefulsets/status", "daemonsets", "daemonsets/status"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["karpenter.sh"]
+    resources: ["nodepools", "nodeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["karpenter.k8s.aws"]
+    resources: ["ec2nodeclasses"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cloudward-workload-observer
+subjects:
+  - kind: Group
+    name: cloudward:observer
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: cloudward:executor
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cloudward-workload-observer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cloudward-staging-executor
+  namespace: cloudward-staging
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/proxy", "services/proxy"]
+    verbs: ["get"]
+  - apiGroups: ["cilium.io"]
+    resources: ["ciliumnetworkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["stresschaos", "podchaos"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cloudward-staging-executor
+  namespace: cloudward-staging
+subjects:
+  - kind: Group
+    name: cloudward:executor
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cloudward-staging-executor

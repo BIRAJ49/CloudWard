@@ -123,19 +123,33 @@ class FinOpsEngine:
                 scenario_id="finops.overprovisioned-workload",
                 outcome="NO_RECOMMENDATION",
                 reason="Observed p95 usage plus configured safety headroom does not support a safe reduction.",
-                observed={**observed, "cpu_percentiles": cpu.model_dump(), "memory_percentiles": memory.model_dump()},
+                observed={
+                    **observed,
+                    "cpu_percentiles": cpu.model_dump(),
+                    "memory_percentiles": memory.model_dump(),
+                },
             )
 
-        coverage = min(1.0, observation.window.observed_seconds / observation.window.requested_seconds)
+        coverage = min(
+            1.0, observation.window.observed_seconds / observation.window.requested_seconds
+        )
         completeness = 1.0 if observation.allocation.total_cost is not None else 0.85
         confidence = round(min(0.99, coverage * completeness), 2)
         reduction = max(cpu_reduction, memory_reduction)
         risk = min(
             100,
-            round(10 + reduction * 35 + (1 - confidence) * 25 + (20 if observation.environment == "production" else 0)),
+            round(
+                10
+                + reduction * 35
+                + (1 - confidence) * 25
+                + (20 if observation.environment == "production" else 0)
+            ),
         )
         savings_value: float | None = None
-        if observation.allocation.cpu_cost is not None and observation.allocation.memory_cost is not None:
+        if (
+            observation.allocation.cpu_cost is not None
+            and observation.allocation.memory_cost is not None
+        ):
             savings_value = round(
                 observation.allocation.cpu_cost * cpu_reduction
                 + observation.allocation.memory_cost * memory_reduction,
@@ -146,9 +160,13 @@ class FinOpsEngine:
             "A pull request requires human review; CloudWard will not resize a live production Deployment.",
         ]
         if observation.window.demo_oriented:
-            limitations.append("The evidence window is shortened for the local demo and is not production-grade.")
+            limitations.append(
+                "The evidence window is shortened for the local demo and is not production-grade."
+            )
         if savings_value is None:
-            limitations.append("OpenCost did not provide CPU and memory cost components, so monetary savings are not estimated.")
+            limitations.append(
+                "OpenCost did not provide CPU and memory cost components, so monetary savings are not estimated."
+            )
         evidence = {
             "cpu_usage_cores": cpu.model_dump(),
             "memory_usage_bytes": memory.model_dump(),

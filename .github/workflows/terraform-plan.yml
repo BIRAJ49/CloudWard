@@ -1,0 +1,114 @@
+name: Terraform plan and IaC security
+
+on:
+  pull_request:
+    paths:
+      - "cloudward-infra/**"
+      - ".github/workflows/terraform-plan.yml"
+      - "scripts/aws/summarize-terraform-plan.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-plan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_ROOT: cloudward-infra/environments/aws-eu-north-1
+  TF_VERSION: "1.11.4"
+  TFLINT_VERSION: "v0.56.0"
+
+jobs:
+  static-analysis:
+    name: Format, validate, lint, and scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: terraform-linters/setup-tflint@v4.1.1
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+      - name: Terraform format
+        run: terraform fmt -check -recursive cloudward-infra
+      - name: Terraform validate without remote state
+        working-directory: ${{ env.TF_ROOT }}
+        run: |
+          terraform init -backend=false
+          terraform validate
+      - name: TFLint
+        working-directory: cloudward-infra
+        run: |
+          tflint --init
+          tflint --recursive
+      - name: Trivy IaC security gate
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: config
+          scan-ref: cloudward-infra
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+
+  plan:
+    name: Read-only AWS plan
+    needs: static-analysis
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: aws-eu-north-1-plan
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - name: Assume the read-only Terraform planning role
+        uses: aws-actions/configure-aws-credentials@v4.1.0
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
+          aws-region: eu-north-1
+      - name: Initialize the native-lockfile S3 backend
+        working-directory: ${{ env.TF_ROOT }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ vars.TF_STATE_KEY }}" \
+            -backend-config="region=eu-north-1" \
+            -backend-config="use_lockfile=true"
+      - name: Create the review plan
+        id: plan
+        working-directory: ${{ env.TF_ROOT }}
+        env:
+          TF_VAR_eks_public_access_cidrs: ${{ vars.EKS_PUBLIC_ACCESS_CIDRS }}
+          TF_VAR_monthly_budget_usd: ${{ vars.MONTHLY_BUDGET_USD }}
+        run: |
+          set +e
+          terraform plan -detailed-exitcode -no-color -out=tfplan
+          status=$?
+          set -e
+          if [ "$status" -eq 1 ]; then
+            exit 1
+          fi
+          printf 'has_changes=%s\n' "$([ "$status" -eq 2 ] && printf true || printf false)" >>"$GITHUB_OUTPUT"
+      - name: Write a value-free plan summary
+        working-directory: ${{ env.TF_ROOT }}
+        run: ../../../scripts/aws/summarize-terraform-plan.sh tfplan >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: terraform-plan-${{ github.run_id }}
+          path: ${{ env.TF_ROOT }}/tfplan
+          if-no-files-found: error
+          retention-days: 3

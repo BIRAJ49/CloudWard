@@ -222,7 +222,7 @@ describe("CloudWard dashboard", () => {
 
     await waitFor(() => expect(screen.queryByText("Database latency")).not.toBeInTheDocument());
     expect(screen.getByText("Pod unhealthy")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("redirects protected views to sign in after a 401", async () => {

@@ -72,7 +72,23 @@ done
 
 curl --fail --silent --show-error --max-time 5 \
   http://127.0.0.1:18080/health/ready >/dev/null
-curl --fail --silent --show-error --max-time 5 \
-  http://127.0.0.1:18080/demo/state >/dev/null
+control_curl_args=(--fail --silent --show-error --max-time 5)
+if kubectl -n "$namespace" get secret cloudward-demo-control >/dev/null 2>&1; then
+  command -v base64 >/dev/null 2>&1 || {
+    printf 'error: base64 is required when demo control authentication is enabled\n' >&2
+    exit 69
+  }
+  demo_control_token="$(
+    kubectl -n "$namespace" get secret cloudward-demo-control \
+      -o jsonpath='{.data.token}' | base64 --decode
+  )"
+  [[ "${#demo_control_token}" -ge 32 ]] || {
+    printf 'error: demo control secret is missing or too short\n' >&2
+    exit 1
+  }
+  control_curl_args+=(--header "X-CloudWard-Demo-Token: $demo_control_token")
+fi
+curl "${control_curl_args[@]}" http://127.0.0.1:18080/demo/state >/dev/null
+unset demo_control_token
 
 printf 'staging validation passed for %s\n' "$expected_image"

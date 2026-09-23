@@ -1,0 +1,9 @@
+clusterName: cloudward-aws-eu-north-1
+nodeRoleName: cloudward-aws-eu-north-1-karpenter-node
+nodeVolumeSizeGi: 30
+allowedInstanceCategories: [c, m, t]
+allowedInstanceSizes: [small, medium, large]
+limits:
+  critical: { cpu: "16", memory: 64Gi }
+  demoSpot: { cpu: "16", memory: 64Gi }
+  demoFallback: { cpu: "8", memory: 32Gi }

@@ -12,9 +12,9 @@ export function StatusBadge({
   dot = false,
 }: StatusBadgeProps) {
   return (
-    <span className={`status-badge status-badge--${tone}`}>
-      {dot ? <span className="status-badge__dot" aria-hidden="true" /> : null}
-      {label}
+    <span className={`status-badge status-badge--${tone}`} data-tone={tone}>
+      {dot ? <span className="status-badge__dot" aria-hidden="true" /> : <span className="status-badge__rule" aria-hidden="true" />}
+      <span className="status-badge__label">{label}</span>
     </span>
   );
 }

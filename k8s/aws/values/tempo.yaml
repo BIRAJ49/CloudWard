@@ -1,0 +1,41 @@
+fullnameOverride: tempo
+replicas: 1
+
+tempo:
+  reportingEnabled: false
+  retention: 168h
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+      wal:
+        path: /var/tempo/wal
+
+nodeSelector:
+  cloudward.io/capacity-class: system
+
+persistence:
+  enabled: true
+  size: 10Gi
+
+service:
+  type: ClusterIP
+
+serviceMonitor:
+  enabled: true
+  interval: 30s

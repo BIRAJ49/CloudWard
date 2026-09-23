@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.models import (
     ActorType,
@@ -33,6 +33,38 @@ class IncidentTransitionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     state: IncidentState
     reason: str | None = Field(default=None, max_length=1000)
+
+
+class IncidentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str | None = Field(default=None, max_length=255)
+    summary: str | None = Field(default=None, max_length=4000)
+    severity: str | None = Field(default=None, max_length=32)
+    state: IncidentState | None = None
+
+
+class IncidentResolveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str | None = Field(default="Resolved by operator", max_length=1000)
+    source: ResolutionSource = ResolutionSource.HUMAN_ACTION
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def _normalize_source(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.upper()
+        return value
+
+
+class EvidenceCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    evidence_type: EvidenceType
+    summary: str = Field(min_length=1, max_length=1000)
+    source: str = Field(default="api", min_length=1, max_length=64)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    phase: EvidencePhase = EvidencePhase.INCIDENT
+    reference: str | None = Field(default=None, max_length=1024)
+    query: str | None = Field(default=None, max_length=2000)
 
 
 class IncidentResponse(BaseModel):
@@ -185,3 +217,20 @@ class TaskPublishResponse(BaseModel):
     task_id: str
     task_name: str
     queue: str
+
+
+class ActionCatalogItem(BaseModel):
+    action_type: str
+    reversible: bool
+    persistent: bool
+    allowed_environments: list[str]
+    required_permission: str
+    verification_strategy: str
+    rollback_capable: bool
+    implemented: bool
+
+
+class ActionEvaluationRequest(BaseModel):
+    action_type: ActionType
+    environment: Environment
+    parameters: dict[str, Any] = Field(default_factory=dict)

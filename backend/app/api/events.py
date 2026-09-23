@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -19,6 +20,8 @@ from app.events import wait_for_stream_event
 from app.rbac import Permission, require_permission
 
 router = APIRouter(prefix="/events", tags=["events"])
+# StreamEvent.id is a PostgreSQL INTEGER, not a BIGINT.
+MAX_EVENT_CURSOR = 2**31 - 1
 
 
 @router.get("/stream", response_class=StreamingResponse)
@@ -27,40 +30,58 @@ async def event_stream(
     _: Annotated[Principal, Depends(require_permission(Permission.PLATFORM_READ))],
     session: Annotated[AsyncSession, Depends(get_session)],
     header_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
-    query_event_id: Annotated[int | None, Query(alias="last_event_id", ge=0)] = None,
+    query_event_id: Annotated[
+        int | None, Query(alias="last_event_id", ge=0, le=MAX_EVENT_CURSOR)
+    ] = None,
 ) -> StreamingResponse:
     cursor = query_event_id or 0
     if header_event_id:
         try:
-            cursor = max(cursor, int(header_event_id))
+            header_cursor = int(header_event_id)
+            if not 0 <= header_cursor <= MAX_EVENT_CURSOR:
+                raise ValueError("event cursor is outside the supported range")
+            cursor = max(cursor, header_cursor)
         except ValueError as exc:
             raise CloudWardError(
-                "INVALID_EVENT_CURSOR", "Last-Event-ID must be a non-negative integer", status_code=422
+                "INVALID_EVENT_CURSOR",
+                "Last-Event-ID must be a non-negative integer",
+                status_code=422,
             ) from exc
-        if cursor < 0:
-            raise CloudWardError(
-                "INVALID_EVENT_CURSOR", "Last-Event-ID must be a non-negative integer", status_code=422
-            )
+
+    # Release the transaction used by authentication before streaming.
+    await session.close()
 
     async def events() -> AsyncIterator[str]:
         nonlocal cursor
+        deadline = time.monotonic() + 60
         yield "retry: 3000\n\n"
-        while not await request.is_disconnected():
-            records = list(
-                (
-                    await session.execute(
+        # Periodic reconnects recheck revoked roles and expired sessions.
+        while time.monotonic() < deadline and not await request.is_disconnected():
+            frames: list[tuple[int, str]] = []
+            try:
+                records = (
+                    await session.scalars(
                         select(StreamEvent)
                         .where(StreamEvent.id > cursor)
                         .order_by(StreamEvent.id)
                         .limit(100)
                     )
-                ).scalars()
-            )
-            if records:
+                ).all()
                 for record in records:
-                    cursor = record.id
                     data = json.dumps(record.payload, separators=(",", ":"), default=str)
-                    yield f"id: {record.id}\nevent: {record.event_type}\ndata: {data}\n\n"
+                    frames.append(
+                        (
+                            record.id,
+                            f"id: {record.id}\nevent: {record.event_type}\ndata: {data}\n\n",
+                        )
+                    )
+            finally:
+                # A slow reader or idle stream must not reserve a pool connection.
+                await session.close()
+            if frames:
+                for event_id, frame in frames:
+                    cursor = event_id
+                    yield frame
                 continue
             signaled = await wait_for_stream_event(15.0)
             if not signaled:

@@ -142,6 +142,8 @@ export interface Cluster {
   labels?: Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
+  agent_observed_at?: string | null;
+  agent_received_at?: string | null;
   [key: string]: unknown;
 }
 

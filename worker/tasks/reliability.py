@@ -2,40 +2,33 @@
 
 from __future__ import annotations
 
-import json
 import os
+import uuid
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from celery import Task
 
 from worker.celery_app import celery_app
+from worker.http import internal_url, post_json
 
-INTERNAL_API = os.getenv("CLOUDWARD_INTERNAL_API_URL", "http://api:8000/api/v1/internal").rstrip("/")
+INTERNAL_API = os.getenv(
+    "CLOUDWARD_INTERNAL_API_URL", "http://api:8000/api/v1/internal"
+).rstrip("/")
 WORKER_TOKEN = os.getenv("WORKER_INTERNAL_TOKEN", "local-worker-token-change-me")
 
 
 def _post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
-    request = Request(
-        f"{INTERNAL_API}{path}",
-        data=json.dumps(payload, separators=(",", ":")).encode(),
-        headers={
-            "Authorization": f"Bearer {WORKER_TOKEN}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
     try:
-        with urlopen(request, timeout=25) as response:  # noqa: S310 - fixed internal URL
-            result = json.load(response)
+        return post_json(
+            internal_url(INTERNAL_API, path), WORKER_TOKEN, payload, timeout=25
+        )
     except HTTPError as exc:
         if 400 <= exc.code < 500 and exc.code not in {408, 409, 429}:
-            raise RuntimeError(f"non-retryable internal API response {exc.code}") from exc
+            raise RuntimeError(
+                f"non-retryable internal API response {exc.code}"
+            ) from exc
         raise
-    if not isinstance(result, dict):
-        raise RuntimeError("internal API returned a non-object response")
-    return result
 
 
 @celery_app.task(
@@ -56,7 +49,11 @@ def process_alert(
     try:
         return _post(
             "/reliability/process-alert",
-            {"incident_id": incident_id, "alert": alert, "correlation_id": correlation_id},
+            {
+                "incident_id": incident_id,
+                "alert": alert,
+                "correlation_id": correlation_id,
+            },
         )
     except (URLError, TimeoutError) as exc:
         countdown = min(2 ** (self.request.retries + 1), 30)
@@ -74,7 +71,7 @@ def process_alert(
 )
 def monitor_scenario(self: Task, execution_id: str) -> dict[str, Any]:
     try:
-        result = _post(f"/executions/{execution_id}/reconcile", {})
+        result = _post(f"/executions/{uuid.UUID(execution_id)}/reconcile", {})
     except (URLError, TimeoutError) as exc:
         countdown = min(2 ** (self.request.retries + 1), 30)
         raise self.retry(exc=exc, countdown=countdown)

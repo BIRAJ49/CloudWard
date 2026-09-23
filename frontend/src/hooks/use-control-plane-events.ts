@@ -52,7 +52,18 @@ export function useControlPlaneEvents(
       const receive = (rawEvent: Event) => {
         const message = rawEvent as MessageEvent<string>;
         const parsedEventId = Number(message.lastEventId);
-        if (Number.isSafeInteger(parsedEventId) && parsedEventId > lastEventId) {
+        const hasCursor = Number.isSafeInteger(parsedEventId) && parsedEventId > 0;
+        if (hasCursor && parsedEventId <= lastEventId) return;
+        let event: ControlPlaneEvent;
+        try {
+          const payload: unknown = JSON.parse(message.data);
+          if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return;
+          event = payload as ControlPlaneEvent;
+        } catch {
+          // A malformed frame must not advance the durable replay cursor.
+          return;
+        }
+        if (hasCursor) {
           lastEventId = parsedEventId;
           try {
             window.sessionStorage.setItem(CURSOR_KEY, String(lastEventId));
@@ -61,14 +72,16 @@ export function useControlPlaneEvents(
           }
         }
         try {
-          callback.current(JSON.parse(message.data) as ControlPlaneEvent);
+          callback.current(event);
         } catch {
-          // Ignore keepalives and malformed frames; the stream remains usable.
+          // A consumer failure must not tear down the shared transport.
         }
       };
       source.onmessage = receive;
       for (const eventName of [
         "incident.created",
+        "incident.evidence_added",
+        "cluster.observation",
         "incident.state_changed",
         "incident.event",
         "remediation.progress",

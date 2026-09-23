@@ -17,10 +17,10 @@ from app.db.models import (
     Service,
     VerificationRecord,
 )
-from app.incident_memory.schemas import MemoryWrite
-from app.incident_memory.service import IncidentMemoryService
 from app.incident_memory.fingerprint import select_stable_labels
 from app.incident_memory.models import IncidentMemoryRecord
+from app.incident_memory.schemas import MemoryWrite
+from app.incident_memory.service import IncidentMemoryService
 
 
 async def capture_terminal_incident(
@@ -80,9 +80,7 @@ async def capture_terminal_incident(
     )
     existing_memory = (
         await session.execute(
-            select(IncidentMemoryRecord).where(
-                IncidentMemoryRecord.incident_id == incident.id
-            )
+            select(IncidentMemoryRecord).where(IncidentMemoryRecord.incident_id == incident.id)
         )
     ).scalar_one_or_none()
     terminal_at = (
@@ -90,7 +88,12 @@ async def capture_terminal_incident(
         or (existing_memory.resolved_at if existing_memory else None)
         or datetime.now(UTC)
     )
-    duration_seconds = max(0, int((terminal_at - incident.created_at).total_seconds()))
+    start = incident.created_at
+    if start.tzinfo is None and terminal_at.tzinfo is not None:
+        start = start.replace(tzinfo=UTC)
+    elif start.tzinfo is not None and terminal_at.tzinfo is None:
+        terminal_at = terminal_at.replace(tzinfo=UTC)
+    duration_seconds = max(0, int((terminal_at - start).total_seconds()))
     action = execution.action_type if execution else proposal.action_type if proposal else None
     service_key = service.name if service else alert.service if alert else "unassigned"
     namespace = service.namespace if service else alert.namespace if alert else None

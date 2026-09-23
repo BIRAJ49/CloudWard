@@ -13,7 +13,7 @@ async def test_admin_can_manage_role_mapping_without_dev_principal_fk_violation(
     user_id = login.json()["user_id"]
     response = await api_client.put(
         f"/api/v1/role-mappings/{user_id}",
-        headers=admin_headers,
+        headers={**admin_headers, "Origin": "http://localhost:5173"},
         json={"role": "Operator"},
     )
     assert response.status_code == 200, response.text

@@ -10,6 +10,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    DateTime,
     Float,
     ForeignKey,
     Index,
@@ -60,6 +61,6 @@ class IncidentMemoryRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     model: Mapped[str | None] = mapped_column(String(128))
     confidence: Mapped[float | None] = mapped_column(Float)
     successful: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    resolved_at: Mapped[datetime] = mapped_column(nullable=False)
+    resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     evidence_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     operator_summary: Mapped[str | None] = mapped_column(Text)

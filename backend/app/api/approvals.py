@@ -23,9 +23,7 @@ from app.rbac import Permission, require_permission
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 Viewer = Annotated[Principal, Depends(require_permission(Permission.PLATFORM_READ))]
-Approver = Annotated[
-    Principal, Depends(require_permission(Permission.ACTION_APPROVE_STANDARD))
-]
+Approver = Annotated[Principal, Depends(require_permission(Permission.ACTION_APPROVE_STANDARD))]
 Rejector = Annotated[Principal, Depends(require_permission(Permission.ACTION_REJECT))]
 
 

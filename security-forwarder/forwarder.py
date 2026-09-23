@@ -43,6 +43,11 @@ class ConfigurationError(RuntimeError):
     pass
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def log(event: str, **fields: object) -> None:
     print(
         json.dumps(
@@ -87,7 +92,9 @@ def _event_body(raw: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def normalize(raw: dict[str, Any], *, node_name: str, sequence: int) -> dict[str, Any] | None:
+def normalize(
+    raw: dict[str, Any], *, node_name: str, sequence: int
+) -> dict[str, Any] | None:
     body = _event_body(raw)
     if body is None:
         return None
@@ -130,7 +137,9 @@ def normalize(raw: dict[str, Any], *, node_name: str, sequence: int) -> dict[str
     binary = _redact(str(process.get("binary") or "/usr/local/bin/python"))
     parent = body.get("parent")
     parent_binary = (
-        _redact(str(parent.get("binary"))) if isinstance(parent, dict) and parent.get("binary") else None
+        _redact(str(parent.get("binary")))
+        if isinstance(parent, dict) and parent.get("binary")
+        else None
     )
     if event_type == "UNEXPECTED_EGRESS":
         normalized["network"] = {
@@ -171,11 +180,15 @@ class Forwarder:
         if parsed.scheme != "https" and not (
             parsed.scheme == "http" and parsed.hostname in local_http_hosts
         ):
-            raise ConfigurationError("security API must use HTTPS (local host bridge excepted)")
+            raise ConfigurationError(
+                "security API must use HTTPS (local host bridge excepted)"
+            )
         if not parsed.path.endswith("/api/v1/webhooks/security/tetragon"):
             raise ConfigurationError("security API URL has an unexpected path")
         if len(self.secret) < 32:
-            raise ConfigurationError("TETRAGON_WEBHOOK_SECRET must contain at least 32 characters")
+            raise ConfigurationError(
+                "TETRAGON_WEBHOOK_SECRET must contain at least 32 characters"
+            )
         if not 1 <= self.rate <= 10_000 or not 10 <= self.dedup_ttl <= 3600:
             raise ConfigurationError("forwarder bounds are invalid")
 
@@ -186,7 +199,11 @@ class Forwarder:
             raw = self.events.get()
             sequence += 1
             normalized = normalize(raw, node_name=self.node_name, sequence=sequence)
-            if normalized is None or self._duplicate(normalized) or not self._within_rate():
+            if (
+                normalized is None
+                or self._duplicate(normalized)
+                or not self._within_rate()
+            ):
                 continue
             self._deliver(normalized)
 
@@ -247,7 +264,9 @@ class Forwarder:
             timestamp = str(int(time.time()))
             nonce = secrets.token_hex(16)
             signed = timestamp.encode() + b"." + nonce.encode() + b"." + body
-            signature = hmac.new(self.secret.encode(), signed, hashlib.sha256).hexdigest()
+            signature = hmac.new(
+                self.secret.encode(), signed, hashlib.sha256
+            ).hexdigest()
             request = urllib.request.Request(
                 self.api_url,
                 method="POST",
@@ -260,14 +279,24 @@ class Forwarder:
                 },
             )
             try:
-                with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
+                with urllib.request.build_opener(NoRedirect()).open(
+                    request, timeout=5
+                ) as response:
                     if 200 <= response.status < 300:
-                        log("event_forwarded", event_type=event["event_type"], attempt=attempt)
+                        log(
+                            "event_forwarded",
+                            event_type=event["event_type"],
+                            attempt=attempt,
+                        )
                         return
             except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
                 log("delivery_failed", attempt=attempt, error_type=type(exc).__name__)
             time.sleep(2 ** (attempt - 1))
-        log("event_dropped", reason="delivery_retries_exhausted", event_type=event["event_type"])
+        log(
+            "event_dropped",
+            reason="delivery_retries_exhausted",
+            event_type=event["event_type"],
+        )
 
 
 if __name__ == "__main__":
@@ -276,4 +305,3 @@ if __name__ == "__main__":
     except (ConfigurationError, ValueError) as error:
         log("configuration_error", error_type=type(error).__name__)
         sys.exit(2)
-

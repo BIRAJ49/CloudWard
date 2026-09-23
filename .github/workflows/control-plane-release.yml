@@ -1,0 +1,119 @@
+name: Release signed control-plane images
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type PUBLISH_CONTROL_PLANE to publish reviewed main-branch images
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudward-control-plane-release
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'PUBLISH_CONTROL_PLANE'
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: quality
+    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'PUBLISH_CONTROL_PLANE'
+    runs-on: ubuntu-24.04
+    environment: release
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: cloudward-api
+            context: .
+            dockerfile: docker/backend.Dockerfile
+          - image: cloudward-worker
+            context: .
+            dockerfile: docker/worker.Dockerfile
+          - image: cloudward-frontend
+            context: frontend
+            dockerfile: frontend/Dockerfile
+          - image: cloudward-security-forwarder
+            context: security-forwarder
+            dockerfile: security-forwarder/Dockerfile
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3.11.1
+      - uses: sigstore/cosign-installer@v3.10.0
+        with:
+          cosign-release: v2.5.3
+      - name: Immutable release coordinates
+        id: coordinates
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+        run: |
+          printf 'image=ghcr.io/%s/%s\n' "${GITHUB_REPOSITORY_OWNER,,}" "$IMAGE_NAME" >>"$GITHUB_OUTPUT"
+          printf 'tag=sha-%s\n' "$GITHUB_SHA" >>"$GITHUB_OUTPUT"
+      - name: Build without publishing
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          load: true
+          push: false
+          tags: ${{ steps.coordinates.outputs.image }}:${{ steps.coordinates.outputs.tag }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+      - name: Gate image vulnerabilities
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: image
+          image-ref: ${{ steps.coordinates.outputs.image }}:${{ steps.coordinates.outputs.tag }}
+          trivy-config: trivy.yaml
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0.20.6
+        with:
+          image: ${{ steps.coordinates.outputs.image }}:${{ steps.coordinates.outputs.tag }}
+          format: cyclonedx-json
+          output-file: image.cdx.json
+          upload-artifact: false
+      - uses: docker/login-action@v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish scanned image, sign, attest, and verify
+        env:
+          IMAGE: ${{ steps.coordinates.outputs.image }}
+          TAG: ${{ steps.coordinates.outputs.tag }}
+        run: |
+          docker push "$IMAGE:$TAG"
+          digest="$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          reference="$IMAGE@$digest"
+          identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/control-plane-release.yml@refs/heads/main"
+          cosign sign --yes "$reference"
+          cosign attest --yes --type cyclonedx --predicate image.cdx.json "$reference"
+          cosign verify --certificate-identity "$identity" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$reference" >/dev/null
+          cosign verify-attestation --type cyclonedx --certificate-identity "$identity" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$reference" >/dev/null
+          printf '%s\n' "$reference" >image-reference.txt
+          printf 'Published and verified: %s\n' "$reference" >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: ${{ matrix.image }}-${{ github.sha }}-release-evidence
+          path: |
+            image.cdx.json
+            image-reference.txt
+          if-no-files-found: error
+          retention-days: 30

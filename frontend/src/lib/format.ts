@@ -9,7 +9,7 @@ export function serviceName(incident: Incident, services: Service[] = []): strin
   return services.find((service) => service.id === incident.service_id)?.name ?? "Unassigned service";
 }
 
-export function formatDate(value?: string): string {
+export function formatDate(value?: string | null): string {
   if (!value) return "Not recorded";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -74,6 +74,7 @@ export function stateTone(state?: string): Tone {
     normalized === "AWAITING_APPROVAL" ||
     normalized === "ROLLBACK" ||
     normalized === "DEGRADED" ||
+    normalized === "STALE" ||
     normalized === "CONTAINED" ||
     normalized === "PENDING"
   ) {

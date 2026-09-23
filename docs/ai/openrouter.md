@@ -27,6 +27,11 @@ auditable proposal and explicitly does not start execution.
 Failure is safe: timeouts, HTTP errors, invalid JSON, schema violations, and exhausted fallbacks
 produce `AI_UNAVAILABLE`. They do not delay or weaken deterministic remediation.
 
+CloudWard also enforces a database-backed per-incident call budget. Consecutive provider failures
+within the configured window open a shared circuit breaker, so an alert storm cannot multiply
+OpenRouter failures or cost. While the circuit is open, known incidents continue through
+deterministic runbooks and unknown incidents remain advisory-unavailable for human escalation.
+
 ## Configuration
 
 AI diagnosis is off by default.
@@ -41,6 +46,13 @@ AI diagnosis is off by default.
 | `OPENROUTER_TIMEOUT_SECONDS` | Per-request timeout, bounded to 1–120 seconds. |
 | `OPENROUTER_MAX_RETRIES` | Adapter retry bound, 0–3. |
 | `OPENROUTER_MAX_CONTEXT_TOKENS` | Estimated input-token ceiling. |
+| `AI_MAX_EVIDENCE_CHARS` | Sanitized serialized evidence ceiling, at most 60,000 characters. |
+| `AI_MAX_MODEL_CALLS_PER_INCIDENT` | Hard incident-wide invocation budget, at most three. |
+| `AI_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | Consecutive failures required to open the circuit. |
+| `AI_CIRCUIT_BREAKER_WINDOW_SECONDS` | Failure lookback and automatic recovery window. |
+
+In AWS the OpenRouter credential stays on the EC2 control plane. It is not injected into EKS
+workloads or GitOps manifests.
 
 Model IDs are configuration, not application logic. Adding another provider means implementing
 the same typed interface; callers do not depend on OpenRouter response shapes.

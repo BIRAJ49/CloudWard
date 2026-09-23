@@ -1,0 +1,48 @@
+apiVersion: gateway.k8s.aws/v1beta1
+kind: LoadBalancerConfiguration
+metadata:
+  name: cloudward-public-alb
+  namespace: cloudward-ingress
+  labels:
+    app.kubernetes.io/part-of: cloudward
+spec:
+  scheme: internet-facing
+  ipAddressType: ipv4
+  tags:
+    Project: CloudWard
+    Environment: aws
+    ManagedBy: aws-load-balancer-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: cloudward-aws-alb
+  labels:
+    app.kubernetes.io/part-of: cloudward
+spec:
+  controllerName: gateway.k8s.aws/alb
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: cloudward-public
+  namespace: cloudward-ingress
+  labels:
+    app.kubernetes.io/part-of: cloudward
+spec:
+  gatewayClassName: cloudward-aws-alb
+  infrastructure:
+    parametersRef:
+      group: gateway.k8s.aws
+      kind: LoadBalancerConfiguration
+      name: cloudward-public-alb
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              cloudward.io/public-route: allowed

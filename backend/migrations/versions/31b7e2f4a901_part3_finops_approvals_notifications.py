@@ -23,9 +23,7 @@ def upgrade() -> None:
 
 def _upgrade_finops() -> None:
     op.add_column("finops_recommendations", sa.Column("service", sa.String(253), nullable=True))
-    op.add_column(
-        "finops_recommendations", sa.Column("environment", sa.String(32), nullable=True)
-    )
+    op.add_column("finops_recommendations", sa.Column("environment", sa.String(32), nullable=True))
     op.add_column(
         "finops_recommendations",
         sa.Column("current_config", sa.JSON(), server_default=sa.text("'{}'"), nullable=False),
@@ -49,10 +47,12 @@ def _upgrade_finops() -> None:
         sa.Column("limitations", sa.JSON(), server_default=sa.text("'[]'"), nullable=False),
     )
     op.add_column(
-        "finops_recommendations", sa.Column("evidence_window_start", sa.DateTime(timezone=True), nullable=True)
+        "finops_recommendations",
+        sa.Column("evidence_window_start", sa.DateTime(timezone=True), nullable=True),
     )
     op.add_column(
-        "finops_recommendations", sa.Column("evidence_window_end", sa.DateTime(timezone=True), nullable=True)
+        "finops_recommendations",
+        sa.Column("evidence_window_end", sa.DateTime(timezone=True), nullable=True),
     )
     op.add_column(
         "finops_recommendations", sa.Column("source_fingerprint", sa.String(64), nullable=True)
@@ -67,13 +67,17 @@ def _upgrade_finops() -> None:
     op.add_column(
         "finops_recommendations", sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True)
     )
-    op.add_column("finops_recommendations", sa.Column("pr_reference", sa.String(255), nullable=True))
+    op.add_column(
+        "finops_recommendations", sa.Column("pr_reference", sa.String(255), nullable=True)
+    )
     op.add_column("finops_recommendations", sa.Column("pr_url", sa.String(2048), nullable=True))
     op.add_column(
-        "finops_recommendations", sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True)
+        "finops_recommendations",
+        sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.add_column(
-        "finops_recommendations", sa.Column("rejected_at", sa.DateTime(timezone=True), nullable=True)
+        "finops_recommendations",
+        sa.Column("rejected_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.execute(
         "UPDATE finops_recommendations SET "
@@ -102,9 +106,7 @@ def _upgrade_finops() -> None:
         "finops_recommendations",
         ["source_fingerprint"],
     )
-    op.create_index(
-        "ix_finops_status_created", "finops_recommendations", ["status", "created_at"]
-    )
+    op.create_index("ix_finops_status_created", "finops_recommendations", ["status", "created_at"])
     op.create_check_constraint(
         "finops_risk_score_range",
         "finops_recommendations",
@@ -216,9 +218,7 @@ def _upgrade_notifications() -> None:
 def downgrade() -> None:
     op.drop_constraint("notification_max_attempts_positive", "notifications", type_="check")
     op.drop_constraint("notification_attempts_nonnegative", "notifications", type_="check")
-    op.drop_constraint(
-        "uq_notifications_channel_dedupe_key", "notifications", type_="unique"
-    )
+    op.drop_constraint("uq_notifications_channel_dedupe_key", "notifications", type_="unique")
     for column in (
         "next_attempt_at",
         "delivered_at",

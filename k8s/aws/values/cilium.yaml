@@ -1,0 +1,60 @@
+# EKS retains the AWS VPC CNI. Cilium is installed only as the policy and
+# observability layer in AWS-CNI chaining mode.
+cni:
+  chainingMode: aws-cni
+  exclusive: false
+ipam:
+  mode: kubernetes
+kubeProxyReplacement: "false"
+routingMode: native
+endpointRoutes:
+  enabled: true
+enableIPv4Masquerade: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+prometheus:
+  enabled: true
+
+hubble:
+  enabled: true
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - flow
+      - http
+      - tcp
+  relay:
+    enabled: true
+    nodeSelector:
+      cloudward.io/capacity-class: system
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+  ui:
+    enabled: false
+
+operator:
+  replicas: 1
+  nodeSelector:
+    cloudward.io/capacity-class: system
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  prometheus:
+    enabled: true

@@ -10,31 +10,34 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_kubernetes_executor, get_opa_client, get_runbook_loader
-from app.approvals import ApprovalService, ensure_runtime_approval
 from app.api.schemas import (
     ActionExecutionResponse,
     ActionProposalResponse,
     AlertResponse,
     ApprovalRequest,
     AuditResponse,
+    EvidenceCreate,
     EvidenceResponse,
     IncidentCreate,
     IncidentDetailResponse,
     IncidentEventResponse,
+    IncidentResolveRequest,
     IncidentResponse,
     IncidentTransitionRequest,
+    IncidentUpdate,
     PolicyDecisionResponse,
     VerificationResponse,
 )
+from app.approvals import ApprovalService, ensure_runtime_approval
 from app.auth.schemas import Principal
 from app.config import Settings, get_settings
 from app.db.models import (
     ActionExecution,
     ActionProposal,
     ActorType,
+    AlertRecord,
     Approval,
     ApprovalDecision,
-    AlertRecord,
     AuditEvent,
     Environment,
     EvidenceSnapshot,
@@ -45,7 +48,14 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.errors import CloudWardError
-from app.incidents.service import change_incident_state, create_incident, get_incident
+from app.incidents.service import (
+    add_incident_evidence,
+    change_incident_state,
+    create_incident,
+    get_incident,
+    resolve_incident,
+    update_incident,
+)
 from app.incidents.state_machine import IncidentState
 from app.kubernetes import KubernetesExecutor
 from app.logging import correlation_id_context
@@ -213,6 +223,101 @@ async def incident_detail(
         policy_decisions=[PolicyDecisionResponse.model_validate(item) for item in decisions],
         audit_events=[AuditResponse.model_validate(item) for item in audit],
     )
+
+
+@router.patch(
+    "/{incident_id}", response_model=IncidentResponse, summary="Update incident details or state"
+)
+async def patch_incident(
+    incident_id: uuid.UUID,
+    payload: IncidentUpdate,
+    principal: Operator,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Incident:
+    incident = await get_incident(session, incident_id)
+    updated = await update_incident(
+        session,
+        incident,
+        title=payload.title,
+        summary=payload.summary,
+        severity=payload.severity,
+        target_state=payload.state,
+        actor=principal.login,
+        actor_type=ActorType.USER,
+    )
+    await session.commit()
+    await session.refresh(updated)
+    return updated
+
+
+@router.post("/{incident_id}/resolve", response_model=IncidentResponse, summary="Resolve incident")
+async def resolve_incident_endpoint(
+    incident_id: uuid.UUID,
+    payload: IncidentResolveRequest,
+    principal: Operator,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Incident:
+    incident = await get_incident(session, incident_id)
+    resolved = await resolve_incident(
+        session,
+        incident,
+        actor=principal.login,
+        actor_type=ActorType.USER,
+        reason=payload.reason or "Resolved by operator",
+        source=payload.source,
+    )
+    await session.commit()
+    await session.refresh(resolved)
+    return resolved
+
+
+@router.get(
+    "/{incident_id}/evidence",
+    response_model=list[EvidenceResponse],
+    summary="List normalized evidence",
+)
+async def list_incident_evidence(
+    incident_id: uuid.UUID,
+    _: Viewer,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[EvidenceSnapshot]:
+    await get_incident(session, incident_id)
+    result = await session.execute(
+        select(EvidenceSnapshot)
+        .where(EvidenceSnapshot.incident_id == incident_id)
+        .order_by(EvidenceSnapshot.created_at)
+    )
+    return list(result.scalars())
+
+
+@router.post(
+    "/{incident_id}/evidence",
+    response_model=EvidenceResponse,
+    status_code=201,
+    summary="Add normalized evidence to incident",
+)
+async def create_evidence_endpoint(
+    incident_id: uuid.UUID,
+    payload: EvidenceCreate,
+    principal: Operator,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> EvidenceSnapshot:
+    incident = await get_incident(session, incident_id)
+    evidence = await add_incident_evidence(
+        session,
+        incident,
+        evidence_type=payload.evidence_type,
+        summary=payload.summary,
+        payload=payload.payload,
+        source=payload.source,
+        phase=payload.phase,
+        reference=payload.reference,
+        query=payload.query,
+        collected_by=principal.login,
+    )
+    await session.commit()
+    await session.refresh(evidence)
+    return evidence
 
 
 @router.get("/{incident_id}/events", response_model=list[IncidentEventResponse])

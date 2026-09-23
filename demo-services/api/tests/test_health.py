@@ -22,6 +22,10 @@ def test_default_health_endpoints(tmp_path: Path) -> None:
     assert live.json()["status"] == "alive"
     assert ready.status_code == 200
     assert ready.json()["status"] == "ready"
+    metadata = api.get("/metadata")
+    assert metadata.status_code == 200
+    assert metadata.json()["service"] == "cloudward-demo-api"
+    assert metadata.json()["environment"] in {"local", "staging", "production"}
 
 
 def test_controlled_failure_only_changes_readiness(tmp_path: Path) -> None:
@@ -60,3 +64,27 @@ def test_control_endpoints_can_be_disabled(tmp_path: Path) -> None:
     assert api.post("/demo/state/unhealthy").status_code == 404
     assert api.post("/demo/state/healthy").status_code == 404
     assert api.get("/health/ready").status_code == 200
+
+
+def test_control_and_security_endpoints_require_configured_token(
+    tmp_path: Path,
+) -> None:
+    token = "a" * 32
+    api = TestClient(
+        create_app(
+            state_path=tmp_path / "unhealthy",
+            control_enabled=True,
+            control_auth_required=True,
+            control_token=token,
+        )
+    )
+
+    assert api.post("/demo/state/unhealthy").status_code == 401
+    assert api.get("/demo/security/egress-probe").status_code == 401
+    assert (
+        api.post(
+            "/demo/state/unhealthy",
+            headers={"X-CloudWard-Demo-Token": token},
+        ).status_code
+        == 200
+    )

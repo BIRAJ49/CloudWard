@@ -1,6 +1,9 @@
 {{- $image := printf "%s:%s" .Values.image.repository .Values.image.tag -}}
 {{- $version := .Values.image.tag -}}
 {{- $annotations := deepCopy .Values.podAnnotations -}}
+{{- with .Values.release.identifier -}}
+{{- $_ := set $annotations "cloudward.io/release-id" . -}}
+{{- end -}}
 {{- with .Values.release.sourceCommit -}}
 {{- $_ := set $annotations "cloudward.io/source-commit" . -}}
 {{- end -}}
@@ -74,12 +77,27 @@ spec:
               value: {{ .Values.telemetry.environment | quote }}
             - name: SERVICE_VERSION
               value: {{ $version | quote }}
+            - name: RELEASE_IDENTIFIER
+              value: {{ .Values.release.identifier | quote }}
+            - name: SOURCE_COMMIT
+              value: {{ .Values.release.sourceCommit | quote }}
+            - name: IMAGE_DIGEST
+              value: {{ .Values.image.digest | quote }}
             - name: OTEL_SERVICE_NAME
               value: cloudward-demo-api
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.telemetry.otlpEndpoint | quote }}
             - name: DEMO_CONTROL_ENABLED
               value: {{ .Values.demoTarget.enabled | quote }}
+            - name: DEMO_CONTROL_AUTH_REQUIRED
+              value: {{ .Values.demoControlAuth.required | quote }}
+            {{- if .Values.demoControlAuth.required }}
+            - name: DEMO_CONTROL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "demoControlAuth.existingSecret is required when control auth is enabled" .Values.demoControlAuth.existingSecret | quote }}
+                  key: {{ .Values.demoControlAuth.key | quote }}
+            {{- end }}
             - name: DEMO_TRAFFIC_ENABLED
               value: {{ .Values.demoTarget.enabled | quote }}
             - name: CLOUDWARD_C2_URL

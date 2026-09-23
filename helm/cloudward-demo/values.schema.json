@@ -32,6 +32,7 @@
         "rollbackDigest"
       ],
       "properties": {
+        "identifier": {"type": "string", "maxLength": 128},
         "sourceCommit": {"type": "string", "maxLength": 64},
         "sbomReference": {"type": "string", "maxLength": 512},
         "securityScan": {"type": "string", "maxLength": 64},
@@ -53,6 +54,43 @@
       "additionalProperties": false,
       "required": ["enabled"],
       "properties": {"enabled": {"type": "boolean"}}
+    },
+    "demoControlAuth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "existingSecret", "key"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "existingSecret": {"type": "string"},
+        "key": {"type": "string", "minLength": 1}
+      }
+    },
+    "publicRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "gatewayName",
+        "gatewayNamespace",
+        "sectionName",
+        "hostnames",
+        "paths"
+      ],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "gatewayName": {"type": "string", "minLength": 1},
+        "gatewayNamespace": {"type": "string", "minLength": 1},
+        "sectionName": {"type": "string", "minLength": 1},
+        "hostnames": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^/"}
+        }
+      }
     },
     "telemetry": {
       "type": "object",

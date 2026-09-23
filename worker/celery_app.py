@@ -84,4 +84,11 @@ celery_app.conf.update(
     task_track_started=True,
     timezone="UTC",
     worker_prefetch_multiplier=1,
+    beat_schedule={
+        "periodic-healthcheck": {
+            "task": "cloudward.tasks.healthcheck",
+            "schedule": 60.0,
+            "args": ("periodic-heartbeat",),
+        },
+    },
 )

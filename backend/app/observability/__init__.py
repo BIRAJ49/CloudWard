@@ -2,13 +2,13 @@
 
 from app.observability.evidence import IncidentEvidenceService, TelemetryTarget
 from app.observability.providers import (
+    LogsProvider,
     LokiLogsProvider,
     MetricsProvider,
     PrometheusMetricsProvider,
-    TempoTracesProvider,
     TelemetryWindow,
+    TempoTracesProvider,
     TracesProvider,
-    LogsProvider,
 )
 
 __all__ = [

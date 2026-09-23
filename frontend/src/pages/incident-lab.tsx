@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { EmptyState, ErrorNotice, LoadingPanel, Panel } from "../components/panel";
+import { EmptyState, ErrorNotice, LoadingPanel } from "../components/panel";
 import { StatusBadge } from "../components/status-badge";
 import { useControlPlaneEvents } from "../hooks/use-control-plane-events";
 import { useDocumentTitle } from "../hooks/use-document-title";
@@ -112,53 +112,53 @@ export function IncidentLabPage() {
   const canLaunch = principal?.role === "Operator" || principal?.role === "Admin";
 
   return (
-    <div className="page incident-lab-page">
-      <header className="page-header">
+    <div className="page incident-lab-console">
+      <header className="page-header incident-lab-console__masthead">
         <div>
-          <p className="eyebrow">Local reliability validation</p>
+          <p className="eyebrow">Controlled staging range</p>
           <h1>Incident Lab</h1>
-          <p>Run bounded failure scenarios against labeled staging targets and watch CloudWard collect evidence, remediate, and verify recovery.</p>
+          <p>Exercise the reliability control plane with predefined failures, bounded targets, and a durable cleanup record.</p>
         </div>
         <button type="button" className="button button--secondary" onClick={refresh} disabled={loading}>
-          {loading ? "Refreshing…" : "Refresh catalog"}
+          {loading ? "Refreshing…" : "Refresh range"}
         </button>
       </header>
 
-      <div className="lab-boundary" role="note">
-        <div><strong>Staging only</strong><span>Targets must carry <code>cloudward.io/demo-target=true</code>.</span></div>
-        <div><strong>Hard timeouts</strong><span>Every scenario has bounded duration and cleanup.</span></div>
-        <div><strong>Protected namespaces</strong><span>Platform, policy, telemetry, and security namespaces are excluded.</span></div>
-      </div>
+      <section className="range-clearance" role="note" aria-labelledby="range-clearance-title">
+        <div className="range-clearance__stamp"><span>AUTHORIZED</span><strong>STAGING</strong></div>
+        <div className="range-clearance__copy"><p className="section-index">Safety clearance</p><h2 id="range-clearance-title">Bounded targets only</h2><p>Targets must carry <code>cloudward.io/demo-target=true</code>. Platform, policy, telemetry, and security namespaces are excluded.</p></div>
+        <dl><div><dt>Runtime</dt><dd>Hard timeout</dd></div><div><dt>Cleanup</dt><dd>Required</dd></div><div><dt>Production</dt><dd>Excluded</dd></div></dl>
+      </section>
 
       {principal?.role === "Viewer" ? <ErrorNotice title="Viewer access is read-only" message="An Operator or Admin session is required to launch or stop scenarios." /> : null}
       {error ? <ErrorNotice title="Incident Lab unavailable" message={error} retry={refresh} /> : null}
 
-      <Panel title="Scenario catalog" description="Exactly four reliability, three security, and two FinOps demonstrations use safe, predefined targets and expected signals.">
+      <section className="range-catalog" aria-labelledby="range-catalog-title">
+        <header className="range-section-header"><div><p className="section-index">01 / Scenario catalog</p><h2 id="range-catalog-title">Nine controlled exercises</h2></div><p>Four reliability · three security · two FinOps</p></header>
         {loading && !scenarios.length ? <LoadingPanel label="Loading scenario catalog" /> : scenarios.length ? (
-          <div className="scenario-grid">
-            {scenarios.map((scenario) => {
+          <div className="range-catalog__list">
+            {scenarios.map((scenario, index) => {
               const duration = scenario.max_runtime_seconds ?? scenario.max_duration_seconds ?? scenario.timeout_seconds;
               const title = scenario.name ?? scenario.title ?? scenario.id;
               return (
-                <article className="scenario-card" key={scenario.id}>
-                  <header>
-                    <div><span className="scenario-code">{scenario.id}</span><h3>{title}</h3></div>
-                    <StatusBadge label={humanize(scenario.risk_level ?? "bounded")} tone={riskTone(scenario.risk_level)} />
+                <article className="range-scenario" key={scenario.id}>
+                  <span className="range-scenario__number" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                  <header className="range-scenario__header">
+                    <div><span className="scenario-code">{scenario.id}</span><h3>{title}</h3><p>{scenario.description ?? "A bounded CloudWard incident scenario."}</p></div>
+                    <div className="range-scenario__classification"><StatusBadge label={humanize(scenario.risk_level ?? "bounded")} tone={riskTone(scenario.risk_level)} /><span>{humanize(scenario.mechanism ?? scenario.category ?? scenario.scenario_type)}</span></div>
                   </header>
-                  <p>{scenario.description ?? "A bounded CloudWard incident scenario."}</p>
-                  <dl>
-                    <div><dt>Type</dt><dd>{humanize(scenario.mechanism ?? scenario.category ?? scenario.scenario_type)}</dd></div>
+                  <dl className="range-scenario__facts">
                     <div><dt>Maximum run</dt><dd>{duration ? `${duration} seconds` : "Policy default"}</dd></div>
                     <div><dt>Target</dt><dd>{displayValue(scenario.target ?? scenario.target_selector ?? "Labeled staging workload")}</dd></div>
                   </dl>
-                  <div className="expected-signals">
-                    <span>Expected signals</span>
+                  <div className="range-scenario__signals">
+                    <strong>Expected signals</strong>
                     <ul>{(scenario.expected_signals ?? []).map((signal) => <li key={signal}>{humanize(signal)}</li>)}</ul>
                     {!scenario.expected_signals?.length ? <small>Scenario-defined evidence contract</small> : null}
                   </div>
                   <button
                     type="button"
-                    className="button button--primary button--full"
+                    className="button button--primary range-scenario__launch"
                     onClick={() => void startScenario(scenario)}
                     disabled={!canLaunch || scenario.enabled === false || pending === `start:${scenario.id}`}
                   >
@@ -169,11 +169,13 @@ export function IncidentLabPage() {
             })}
           </div>
         ) : <EmptyState title="No scenarios available" detail="The control plane returned an empty scenario catalog." />}
-      </Panel>
+      </section>
 
-      <Panel title="Execution history" description="Durable executions update through the authenticated event stream. Injection alone is never shown as success.">
+      <section className="range-executions" aria-labelledby="range-executions-title">
+        <header className="range-section-header"><div><p className="section-index">02 / Run ledger</p><h2 id="range-executions-title">Execution history</h2></div><p>Durable records · live event stream</p></header>
+        <p className="range-executions__rule">Injection alone is never success. Detection, verification, and cleanup must be recorded.</p>
         {executions.length ? (
-          <div className="table-scroll">
+          <div className="table-scroll range-executions__table">
             <table className="data-table">
               <thead><tr><th>Execution</th><th>Scenario</th><th>Status</th><th>Target</th><th>Incident</th><th>Started</th><th>Cleanup</th><th><span className="visually-hidden">Action</span></th></tr></thead>
               <tbody>{executions.map((execution) => {
@@ -196,13 +198,14 @@ export function IncidentLabPage() {
             </table>
           </div>
         ) : <EmptyState title="No scenario executions" detail="Select a catalog scenario to create a bounded execution." />}
-      </Panel>
+      </section>
 
-      <Panel title="Scenario lifecycle" description="Every execution must progress through detection, decision, verification, and cleanup before completion.">
-        <ol className="lab-lifecycle">
+      <section className="range-protocol" aria-labelledby="range-protocol-title">
+        <header className="range-section-header"><div><p className="section-index">03 / Completion protocol</p><h2 id="range-protocol-title">Scenario lifecycle</h2></div><p>Every stage leaves evidence</p></header>
+        <ol className="range-protocol__steps">
           {["Scenario requested", "Safety validation", "Injection started", "Expected signal detected", "Incident created", "Evidence collected", "Diagnosis", "Risk", "OPA", "Remediation / containment", "Verification", "Cleanup", "Completed"].map((stage, index) => <li key={stage}><span>{index + 1}</span><strong>{stage}</strong></li>)}
         </ol>
-      </Panel>
+      </section>
     </div>
   );
 }

@@ -1,0 +1,18 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+terraform.tfvars
+*.auto.tfvars
+!*.tfvars.example
+.terraformrc
+terraform.rc
+
+# Terraform's dependency lock file is intentionally not ignored. Generate it
+# with `terraform init` during the validation phase and commit it afterward.

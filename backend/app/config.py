@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from uuid import UUID
 
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -31,6 +32,8 @@ class Settings(BaseSettings):
         default="development", alias="APP_ENV"
     )
     app_name: str = Field(default="CloudWard API", alias="APP_NAME")
+    app_version: str = Field(default="0.5.0", alias="APP_VERSION")
+    debug: bool = Field(default=False, alias="DEBUG")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     database_url: str = Field(
         default="postgresql+asyncpg://cloudward:cloudward@postgres:5432/cloudward",
@@ -57,14 +60,37 @@ class Settings(BaseSettings):
         default=SecretStr("local-development-session-secret-change-me"),
         alias="SESSION_SECRET",
     )
+    aws_region: str = Field(default="eu-north-1", alias="AWS_REGION")
+    teams_webhook_url: str | None = Field(default=None, alias="TEAMS_WEBHOOK_URL")
     session_cookie_name: str = Field(default="cloudward_session", alias="SESSION_COOKIE_NAME")
-    session_max_age_seconds: int = Field(default=28_800, alias="SESSION_MAX_AGE_SECONDS", ge=300)
+    session_max_age_seconds: int = Field(
+        default=28_800, alias="SESSION_MAX_AGE_SECONDS", ge=300, le=86_400
+    )
     dev_auth_enabled: bool = Field(default=False, alias="DEV_AUTH_ENABLED")
     cors_origins: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
     runbooks_path: Path = Field(default=Path("/app/runbooks"), alias="RUNBOOKS_PATH")
     kubernetes_context: str | None = Field(default=None, alias="KUBERNETES_CONTEXT")
     kubernetes_allowed_namespaces: str = Field(
         default="cloudward-staging", alias="KUBERNETES_ALLOWED_NAMESPACES"
+    )
+    inventory_bootstrap_enabled: bool = Field(default=False, alias="INVENTORY_BOOTSTRAP_ENABLED")
+    cluster_agent_enabled: bool = Field(default=False, alias="CLUSTER_AGENT_ENABLED")
+    cluster_agent_cluster_id: UUID | None = Field(default=None, alias="CLUSTER_AGENT_CLUSTER_ID")
+    cluster_agent_token: SecretStr = Field(default=SecretStr(""), alias="CLUSTER_AGENT_TOKEN")
+    cluster_agent_freshness_seconds: int = Field(
+        default=180, ge=60, le=600, alias="CLUSTER_AGENT_FRESHNESS_SECONDS"
+    )
+    inventory_cluster_name: str = Field(
+        default="cloudward-aws", alias="INVENTORY_CLUSTER_NAME", min_length=3, max_length=255
+    )
+    inventory_cluster_context: str = Field(
+        default="cloudward-eks", alias="INVENTORY_CLUSTER_CONTEXT", min_length=1, max_length=255
+    )
+    inventory_cluster_environment: Literal["staging", "production"] = Field(
+        default="production", alias="INVENTORY_CLUSTER_ENVIRONMENT"
+    )
+    inventory_aws_region: str = Field(
+        default="eu-north-1", alias="INVENTORY_AWS_REGION", min_length=9, max_length=32
     )
     verification_timeout_seconds: float = Field(
         default=120.0, alias="VERIFICATION_TIMEOUT_SECONDS", ge=1, le=600
@@ -95,36 +121,26 @@ class Settings(BaseSettings):
     telemetry_timeout_seconds: float = Field(
         default=8.0, alias="TELEMETRY_TIMEOUT_SECONDS", ge=0.5, le=30
     )
-    telemetry_max_samples: int = Field(
-        default=50, alias="TELEMETRY_MAX_SAMPLES", ge=1, le=200
-    )
+    telemetry_max_samples: int = Field(default=50, alias="TELEMETRY_MAX_SAMPLES", ge=1, le=200)
     evidence_before_seconds: int = Field(
         default=300, alias="EVIDENCE_BEFORE_SECONDS", ge=60, le=1800
     )
-    evidence_after_seconds: int = Field(
-        default=180, alias="EVIDENCE_AFTER_SECONDS", ge=60, le=600
-    )
+    evidence_after_seconds: int = Field(default=180, alias="EVIDENCE_AFTER_SECONDS", ge=60, le=600)
     alert_replay_tolerance_seconds: int = Field(
         default=300, alias="ALERT_REPLAY_TOLERANCE_SECONDS", ge=30, le=900
     )
-    incident_lab_namespace: str = Field(
-        default="cloudward-staging", alias="INCIDENT_LAB_NAMESPACE"
-    )
+    incident_lab_namespace: str = Field(default="cloudward-staging", alias="INCIDENT_LAB_NAMESPACE")
     incident_lab_required_label: str = Field(
         default="cloudward.io/demo-target=true", alias="INCIDENT_LAB_REQUIRED_LABEL"
     )
     chaos_max_runtime_seconds: int = Field(
         default=300, alias="CHAOS_MAX_RUNTIME_SECONDS", ge=30, le=600
     )
-    max_temporary_replicas: int = Field(
-        default=5, alias="MAX_TEMPORARY_REPLICAS", ge=2, le=20
-    )
+    max_temporary_replicas: int = Field(default=5, alias="MAX_TEMPORARY_REPLICAS", ge=2, le=20)
     automatic_rollback_max_risk: int = Field(
         default=30, alias="AUTOMATIC_ROLLBACK_MAX_RISK", ge=0, le=30
     )
-    local_gitops_write_enabled: bool = Field(
-        default=False, alias="LOCAL_GITOPS_WRITE_ENABLED"
-    )
+    local_gitops_write_enabled: bool = Field(default=False, alias="LOCAL_GITOPS_WRITE_ENABLED")
     local_gitops_repo_url: str = Field(
         default="git://host.docker.internal:19418/cloudward-gitops.git",
         alias="LOCAL_GITOPS_REPO_URL",
@@ -170,9 +186,7 @@ class Settings(BaseSettings):
     finops_max_response_bytes: int = Field(
         default=1_048_576, alias="FINOPS_MAX_RESPONSE_BYTES", ge=65_536, le=8_388_608
     )
-    finops_max_samples: int = Field(
-        default=1000, alias="FINOPS_MAX_SAMPLES", ge=10, le=5000
-    )
+    finops_max_samples: int = Field(default=1000, alias="FINOPS_MAX_SAMPLES", ge=10, le=5000)
     finops_demo_observation_window_seconds: int = Field(
         default=1800, alias="FINOPS_DEMO_OBSERVATION_WINDOW_SECONDS", ge=900, le=86_400
     )
@@ -188,9 +202,7 @@ class Settings(BaseSettings):
     finops_query_step_seconds: int = Field(
         default=60, alias="FINOPS_QUERY_STEP_SECONDS", ge=15, le=3600
     )
-    finops_minimum_samples: int = Field(
-        default=5, alias="FINOPS_MINIMUM_SAMPLES", ge=5, le=100
-    )
+    finops_minimum_samples: int = Field(default=5, alias="FINOPS_MINIMUM_SAMPLES", ge=5, le=100)
     finops_minimum_window_coverage: float = Field(
         default=0.8, alias="FINOPS_MINIMUM_WINDOW_COVERAGE", ge=0.5, le=1.0
     )
@@ -218,12 +230,8 @@ class Settings(BaseSettings):
     finops_recommendation_ttl_seconds: int = Field(
         default=86_400, alias="FINOPS_RECOMMENDATION_TTL_SECONDS", ge=900, le=2_592_000
     )
-    finops_demo_namespace: str = Field(
-        default="cloudward-staging", alias="FINOPS_DEMO_NAMESPACE"
-    )
-    finops_demo_deployment: str = Field(
-        default="cloudward-demo", alias="FINOPS_DEMO_DEPLOYMENT"
-    )
+    finops_demo_namespace: str = Field(default="cloudward-staging", alias="FINOPS_DEMO_NAMESPACE")
+    finops_demo_deployment: str = Field(default="cloudward-demo", alias="FINOPS_DEMO_DEPLOYMENT")
     finops_demo_pod_pattern: str = Field(
         default="cloudward-demo-.*", alias="FINOPS_DEMO_POD_PATTERN"
     )
@@ -234,9 +242,7 @@ class Settings(BaseSettings):
         default="cloudward-gitops/environments/staging/values.yaml",
         alias="FINOPS_GITOPS_VALUES_PATH",
     )
-    approval_ttl_seconds: int = Field(
-        default=1800, alias="APPROVAL_TTL_SECONDS", ge=60, le=86_400
-    )
+    approval_ttl_seconds: int = Field(default=1800, alias="APPROVAL_TTL_SECONDS", ge=60, le=86_400)
     teams_workflow_webhook_url: SecretStr | None = Field(
         default=None, alias="TEAMS_WORKFLOW_WEBHOOK_URL"
     )
@@ -254,9 +260,7 @@ class Settings(BaseSettings):
         ),
         alias="NOTIFICATION_EVENTS",
     )
-    ai_diagnosis_enabled: bool = Field(
-        default=False, alias="CLOUDWARD_AI_DIAGNOSIS_ENABLED"
-    )
+    ai_diagnosis_enabled: bool = Field(default=False, alias="CLOUDWARD_AI_DIAGNOSIS_ENABLED")
     cloudward_llm_primary_model: str = Field(
         default="openai/gpt-5.6-terra",
         alias="CLOUDWARD_LLM_PRIMARY_MODEL",
@@ -276,12 +280,22 @@ class Settings(BaseSettings):
         max_length=255,
     )
     openrouter_api_key: SecretStr | None = Field(default=None, alias="OPENROUTER_API_KEY")
+    openrouter_primary_model: str = Field(
+        default="anthropic/claude-3.7-sonnet",
+        alias="OPENROUTER_PRIMARY_MODEL",
+        min_length=3,
+        max_length=255,
+    )
+    openrouter_fallback_model: str = Field(
+        default="openai/gpt-4o",
+        alias="OPENROUTER_FALLBACK_MODEL",
+        min_length=3,
+        max_length=255,
+    )
     openrouter_timeout_seconds: float = Field(
         default=30.0, alias="OPENROUTER_TIMEOUT_SECONDS", ge=1, le=120
     )
-    openrouter_max_retries: int = Field(
-        default=2, alias="OPENROUTER_MAX_RETRIES", ge=0, le=3
-    )
+    openrouter_max_retries: int = Field(default=2, alias="OPENROUTER_MAX_RETRIES", ge=0, le=3)
     openrouter_max_context_tokens: int = Field(
         default=16_000,
         alias="OPENROUTER_MAX_CONTEXT_TOKENS",
@@ -304,9 +318,7 @@ class Settings(BaseSettings):
     github_app_installation_id: int | None = Field(
         default=None, alias="GITHUB_APP_INSTALLATION_ID", ge=1
     )
-    github_app_private_key: SecretStr | None = Field(
-        default=None, alias="GITHUB_APP_PRIVATE_KEY"
-    )
+    github_app_private_key: SecretStr | None = Field(default=None, alias="GITHUB_APP_PRIVATE_KEY")
     github_app_read_repositories: str = Field(
         default="", alias="GITHUB_APP_READ_REPOSITORIES", max_length=10_000
     )
@@ -316,6 +328,11 @@ class Settings(BaseSettings):
     github_app_write_allowlist: str = Field(
         default="{}", alias="GITHUB_APP_WRITE_ALLOWLIST", max_length=50_000
     )
+
+    @field_validator("cluster_agent_cluster_id", mode="before")
+    @classmethod
+    def empty_agent_cluster_id(cls, value: object) -> object:
+        return None if value == "" else value
 
     @field_validator("opa_decision_path", "opa_chaos_decision_path")
     @classmethod
@@ -337,6 +354,11 @@ class Settings(BaseSettings):
     def normalize_optional_teams_webhook(cls, value: object) -> object:
         return None if value == "" else value
 
+    @field_validator("github_app_id", "github_app_installation_id", mode="before")
+    @classmethod
+    def normalize_optional_github_app_ids(cls, value: object) -> object:
+        return None if value == "" else value
+
     @field_validator(
         "cloudward_llm_primary_model",
         "cloudward_llm_fallback_model",
@@ -354,9 +376,6 @@ class Settings(BaseSettings):
         if self.app_env in {"staging", "production"}:
             if self.dev_auth_enabled:
                 raise ValueError("development authentication cannot be enabled outside local/test")
-            secret = self.session_secret.get_secret_value()
-            if len(secret) < 32 or "change-me" in secret or "development" in secret:
-                raise ValueError("a strong SESSION_SECRET is required outside local development")
             if not self.github_client_id or not self.github_client_secret:
                 raise ValueError("GitHub OAuth credentials are required outside local development")
             oauth_secret = self.github_client_secret.get_secret_value()
@@ -364,26 +383,54 @@ class Settings(BaseSettings):
                 raise ValueError("placeholder GitHub OAuth credentials are forbidden")
             if "cloudward:cloudward@postgres" in self.database_url:
                 raise ValueError("the local default DATABASE_URL is forbidden outside development")
-            for name, secret in {
+            protected = {
+                "SESSION_SECRET": self.session_secret,
                 "ALERTMANAGER_WEBHOOK_TOKEN": self.alertmanager_webhook_token,
                 "WORKER_INTERNAL_TOKEN": self.worker_internal_token,
                 "TETRAGON_WEBHOOK_SECRET": self.tetragon_webhook_secret,
-            }.items():
-                value = secret.get_secret_value()
-                if len(value) < 32 or "change-me" in value or "replace-me" in value:
-                    raise ValueError(f"a strong {name} is required outside local development")
+            }
+            if self.cluster_agent_enabled:
+                protected["CLUSTER_AGENT_TOKEN"] = self.cluster_agent_token
+            values = [secret.get_secret_value() for secret in protected.values()]
+            for name, protected_secret in protected.items():
+                value = protected_secret.get_secret_value()
+                if len(value) < 32 or any(
+                    marker in value.lower()
+                    for marker in ("change-me", "replace-me", "local-", "development")
+                ):
+                    raise ValueError(f"a unique, non-placeholder {name} is required")
+            if len(set(values)) != len(values):
+                raise ValueError("authentication and ingestion secrets must be distinct")
             if self.ai_diagnosis_enabled:
                 if self.openrouter_api_key is None:
                     raise ValueError("OPENROUTER_API_KEY is required when AI diagnosis is enabled")
                 ai_key = self.openrouter_api_key.get_secret_value()
                 if not ai_key or "replace-me" in ai_key:
                     raise ValueError("placeholder OPENROUTER_API_KEY is forbidden")
+        if self.cluster_agent_enabled:
+            token = self.cluster_agent_token.get_secret_value()
+            if (
+                self.cluster_agent_cluster_id is None
+                or len(token) < 32
+                or "replace-me" in token
+                or "change-me" in token
+            ):
+                raise ValueError(
+                    "cluster agent intake requires a registered cluster ID and a strong dedicated token"
+                )
+            if token in {
+                self.worker_internal_token.get_secret_value(),
+                self.alertmanager_webhook_token.get_secret_value(),
+            }:
+                raise ValueError("cluster agent must not share a worker or webhook token")
         if self.incident_lab_namespace != "cloudward-staging":
             raise ValueError("Incident Lab may target only cloudward-staging")
         if self.incident_lab_required_label != "cloudward.io/demo-target=true":
             raise ValueError("Incident Lab requires the immutable demo-target label selector")
         if self.finops_demo_namespace != "cloudward-staging":
             raise ValueError("FinOps demo analysis may target only cloudward-staging")
+        if self.inventory_bootstrap_enabled and self.inventory_aws_region != "eu-north-1":
+            raise ValueError("Part 4 configured inventory must target eu-north-1")
         if self.finops_gitops_values_path != "cloudward-gitops/environments/staging/values.yaml":
             raise ValueError("FINOPS_GITOPS_VALUES_PATH must be the fixed staging values file")
         if self.local_gitops_write_enabled:

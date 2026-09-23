@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudward-aws-cluster-agent
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  project: cloudward-aws-platform
+  source:
+    repoURL: https://github.com/biraj49/CloudWard.git
+    targetRevision: main
+    path: helm/cloudward-agent
+    helm:
+      # Remains disabled until an operator supplies real identity, Secret,
+      # signed API image digest, endpoint CIDRs and registered service targets.
+      valuesObject:
+        enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cloudward-system
+  syncPolicy:
+    syncOptions:
+      - ServerSideApply=true

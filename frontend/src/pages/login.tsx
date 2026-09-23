@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { ArrowFillButton } from "../components/obsidian/arrow-fill-button";
+import { DottedGrid } from "../components/obsidian/dotted-grid";
 import { ErrorNotice } from "../components/panel";
 import { useDocumentTitle } from "../hooks/use-document-title";
 import { API_BASE_URL, cloudWardApi } from "../lib/api";
@@ -33,34 +35,42 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-context">
-        <div className="login-brand"><span className="brand__mark" aria-hidden="true">CW</span><span><strong>CloudWard</strong><small>Reliability control plane</small></span></div>
-        <div>
-          <p className="eyebrow">Operator access</p>
-          <h1>Sign in to the control plane</h1>
-          <p>Inspect incident evidence and policy-bounded remediation records.</p>
+        <DottedGrid className="login-context__grid" />
+        <div className="login-context__veil" aria-hidden="true" />
+        <div className="login-brand">
+          <span className="brand__mark" aria-hidden="true"><span>C</span><i /><span>W</span></span>
+          <span className="brand__lockup"><strong>CloudWard</strong><small>Reliability operations</small></span>
         </div>
-        <ul className="login-principles">
-          <li><strong>Deterministic runbooks</strong><span>No arbitrary command execution</span></li>
-          <li><strong>OPA authorization</strong><span>Policy remains the final authority</span></li>
-          <li><strong>Verified outcomes</strong><span>Every decision and action is audited</span></li>
-        </ul>
+        <div className="login-context__statement">
+          <p className="eyebrow">Operator console · Local</p>
+          <h1>Know what changed.<br />Know who approved it.</h1>
+          <p>CloudWard keeps incident evidence, policy decisions, and remediation outcomes in one accountable record.</p>
+        </div>
+        <dl className="login-register" aria-label="CloudWard control boundaries">
+          <div><dt>Execution</dt><dd>Allowlisted runbooks only</dd></div>
+          <div><dt>Authority</dt><dd>OPA policy and role controls</dd></div>
+          <div><dt>Record</dt><dd>Evidence retained end to end</dd></div>
+        </dl>
+        <p className="login-context__edition">CloudWard / Local operator edition</p>
       </section>
 
       <section className="login-panel" aria-labelledby="login-title">
         <div className="login-panel__body">
-          <p className="eyebrow">CloudWard access</p>
-          <h2 id="login-title">Continue with GitHub</h2>
-          <p>GitHub establishes your identity. CloudWard applies the assigned Viewer, Operator, or Admin role to each request.</p>
+          <header className="login-panel__header">
+            <span className="login-panel__index" aria-hidden="true">01</span>
+            <div><p className="eyebrow">Identity</p><h2 id="login-title">Continue with GitHub</h2></div>
+          </header>
+          <p className="login-panel__intro">Use your GitHub identity. Access is limited by the CloudWard role assigned to your account.</p>
 
           {error ? <ErrorNotice title="Sign-in failed" message={error} /> : null}
 
-          <a className="button button--primary button--full" href={`${API_BASE_URL}/auth/github/login`}>
+          <ArrowFillButton className="obsidian-arrow-button--full" href={`${API_BASE_URL}/auth/github/login`}>
             Continue with GitHub
-          </a>
+          </ArrowFillButton>
 
           {developmentLoginEnabled ? (
             <div className="dev-login">
-              <div className="dev-login__header"><strong>Development access</strong><span>Local environment only</span></div>
+              <div className="dev-login__header"><strong>Development access</strong><span>Local only</span></div>
               <form onSubmit={submitDevelopmentLogin}>
                 <label className="field">
                   <span>Local identity</span>
@@ -81,7 +91,7 @@ export function LoginPage() {
             </div>
           ) : null}
 
-          <p className="login-footnote">Authentication establishes identity. Backend RBAC authorizes every operation.</p>
+          <p className="login-footnote"><span aria-hidden="true">■</span> Authentication identifies you; server-side RBAC authorizes each operation.</p>
         </div>
       </section>
     </main>
@@ -93,11 +103,13 @@ export function AuthCallbackPage() {
   return (
     <main className="callback-page">
       <section className="callback-card">
-        <span className="brand__mark" aria-hidden="true">CW</span>
-        <p className="eyebrow">GitHub authentication</p>
-        <h1>Session established</h1>
-        <p>Your identity has been accepted. Authorization remains enforced on every control-plane request.</p>
-        <a className="button button--primary" href="/">Open overview</a>
+        <header className="callback-card__brand"><span className="brand__mark" aria-hidden="true"><span>C</span><i /><span>W</span></span><strong>CloudWard</strong></header>
+        <div className="callback-card__body">
+          <p className="eyebrow">GitHub authentication</p>
+          <h1>Session established</h1>
+          <p>Your identity is confirmed. CloudWard will still authorize every control-plane request against your assigned role.</p>
+          <a className="button button--primary" href="/"><span>Open overview</span><span aria-hidden="true">→</span></a>
+        </div>
       </section>
     </main>
   );

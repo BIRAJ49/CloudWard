@@ -1,0 +1,27 @@
+{{- if .Values.publicRoute.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "cloudward-demo.fullname" . }}-public
+  labels:
+    {{- include "cloudward-demo.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.publicRoute.gatewayName }}
+      namespace: {{ .Values.publicRoute.gatewayNamespace }}
+      sectionName: {{ .Values.publicRoute.sectionName }}
+  {{- with .Values.publicRoute.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - matches:
+        {{- range .Values.publicRoute.paths }}
+        - path:
+            type: Exact
+            value: {{ . | quote }}
+        {{- end }}
+      backendRefs:
+        - name: {{ include "cloudward-demo.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}

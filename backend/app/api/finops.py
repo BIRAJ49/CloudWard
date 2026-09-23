@@ -180,9 +180,7 @@ async def list_recommendations(
     )
 
 
-@router.get(
-    "/finops/recommendations/{recommendation_id}", response_model=RecommendationResponse
-)
+@router.get("/finops/recommendations/{recommendation_id}", response_model=RecommendationResponse)
 async def get_recommendation(
     recommendation_id: uuid.UUID,
     _: Viewer,
@@ -191,7 +189,9 @@ async def get_recommendation(
     recommendation = await session.get(FinOpsRecommendation, recommendation_id)
     if recommendation is None:
         raise CloudWardError(
-            "FINOPS_RECOMMENDATION_NOT_FOUND", "FinOps recommendation was not found", status_code=404
+            "FINOPS_RECOMMENDATION_NOT_FOUND",
+            "FinOps recommendation was not found",
+            status_code=404,
         )
     return recommendation
 
@@ -203,7 +203,9 @@ async def analyze_finops_scenario(
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AnalysisResponse:
-    analysis, recommendation = await FinOpsRecommendationService(session, settings).analyze_scenario(
+    analysis, recommendation = await FinOpsRecommendationService(
+        session, settings
+    ).analyze_scenario(
         scenario_id,
         actor=principal.login,
         actor_type=ActorType.USER,
@@ -256,7 +258,9 @@ async def create_finops_pr(
     )
     if source.sha is None:
         raise CloudWardError(
-            "FINOPS_GITOPS_BLOB_MISSING", "GitHub did not return the current values blob", status_code=502
+            "FINOPS_GITOPS_BLOB_MISSING",
+            "GitHub did not return the current values blob",
+            status_code=502,
         )
     if payload.expected_blob_sha is not None and payload.expected_blob_sha != source.sha:
         raise CloudWardError(
@@ -327,7 +331,9 @@ async def run_finops_scenario_job(
     _require_worker(authorization, settings)
     if scenario_id not in FINOPS_SCENARIOS:
         raise CloudWardError(
-            "FINOPS_SCENARIO_NOT_FOUND", "FinOps scenario is not in the fixed catalog", status_code=404
+            "FINOPS_SCENARIO_NOT_FOUND",
+            "FinOps scenario is not in the fixed catalog",
+            status_code=404,
         )
     execution = await session.get(ChaosExecution, payload.execution_id, with_for_update=True)
     if execution is None or execution.scenario_id != scenario_id:
@@ -348,7 +354,9 @@ async def run_finops_scenario_job(
         raise CloudWardError(
             "EXECUTION_NOT_ACTIONABLE", "FinOps execution is no longer actionable", status_code=409
         )
-    analysis, recommendation = await FinOpsRecommendationService(session, settings).analyze_scenario(
+    analysis, recommendation = await FinOpsRecommendationService(
+        session, settings
+    ).analyze_scenario(
         scenario_id,
         actor="finops-worker",
         actor_type=ActorType.SERVICE,
@@ -410,7 +418,9 @@ async def fail_finops_scenario_job(
     _require_worker(authorization, settings)
     execution = await session.get(ChaosExecution, execution_id, with_for_update=True)
     if execution is None or execution.scenario_id not in FINOPS_SCENARIOS:
-        raise CloudWardError("EXECUTION_NOT_FOUND", "FinOps execution was not found", status_code=404)
+        raise CloudWardError(
+            "EXECUTION_NOT_FOUND", "FinOps execution was not found", status_code=404
+        )
     if execution.status in {ExperimentStatus.PENDING, ExperimentStatus.RUNNING}:
         now = utc_now()
         execution.status = ExperimentStatus.FAILED

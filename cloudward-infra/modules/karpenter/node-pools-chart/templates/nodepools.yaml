@@ -1,0 +1,109 @@
+{{- $categories := .Values.allowedInstanceCategories }}
+{{- $sizes := .Values.allowedInstanceSizes }}
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: critical-ondemand
+spec:
+  weight: 100
+  template:
+    metadata:
+      labels:
+        cloudward.io/capacity-class: critical
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: cloudward
+      expireAfter: 168h
+      terminationGracePeriod: 10m
+      requirements:
+        - { key: kubernetes.io/arch, operator: In, values: [amd64] }
+        - { key: kubernetes.io/os, operator: In, values: [linux] }
+        - { key: karpenter.sh/capacity-type, operator: In, values: [on-demand] }
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: {{ $categories | toJson }}
+        - key: karpenter.k8s.aws/instance-size
+          operator: In
+          values: {{ $sizes | toJson }}
+        - { key: karpenter.k8s.aws/instance-generation, operator: Gt, values: ["3"] }
+  limits:
+    cpu: {{ .Values.limits.critical.cpu | quote }}
+    memory: {{ .Values.limits.critical.memory | quote }}
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 5m
+    budgets: [{ nodes: "1" }]
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: demo-spot
+spec:
+  weight: 100
+  template:
+    metadata:
+      labels:
+        cloudward.io/capacity-class: demo
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: cloudward
+      expireAfter: 72h
+      terminationGracePeriod: 5m
+      requirements:
+        - { key: kubernetes.io/arch, operator: In, values: [amd64] }
+        - { key: kubernetes.io/os, operator: In, values: [linux] }
+        - { key: karpenter.sh/capacity-type, operator: In, values: [spot] }
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: {{ $categories | toJson }}
+        - key: karpenter.k8s.aws/instance-size
+          operator: In
+          values: {{ $sizes | toJson }}
+        - { key: karpenter.k8s.aws/instance-generation, operator: Gt, values: ["3"] }
+  limits:
+    cpu: {{ .Values.limits.demoSpot.cpu | quote }}
+    memory: {{ .Values.limits.demoSpot.memory | quote }}
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 2m
+    budgets: [{ nodes: "1" }]
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: demo-ondemand-fallback
+spec:
+  weight: 10
+  template:
+    metadata:
+      labels:
+        cloudward.io/capacity-class: demo
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: cloudward
+      expireAfter: 72h
+      terminationGracePeriod: 5m
+      requirements:
+        - { key: kubernetes.io/arch, operator: In, values: [amd64] }
+        - { key: kubernetes.io/os, operator: In, values: [linux] }
+        - { key: karpenter.sh/capacity-type, operator: In, values: [on-demand] }
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: {{ $categories | toJson }}
+        - key: karpenter.k8s.aws/instance-size
+          operator: In
+          values: {{ $sizes | toJson }}
+        - { key: karpenter.k8s.aws/instance-generation, operator: Gt, values: ["3"] }
+  limits:
+    cpu: {{ .Values.limits.demoFallback.cpu | quote }}
+    memory: {{ .Values.limits.demoFallback.memory | quote }}
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 5m
+    budgets: [{ nodes: "1" }]

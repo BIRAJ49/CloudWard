@@ -1,0 +1,32 @@
+opencost:
+  exporter:
+    defaultClusterId: cloudward-aws-eu-north-1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 192Mi
+      limits:
+        cpu: 500m
+        memory: 768Mi
+  prometheus:
+    internal:
+      enabled: false
+    external:
+      enabled: true
+      url: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+  ui:
+    enabled: false
+
+nodeSelector:
+  cloudward.io/capacity-class: system
+
+service:
+  type: ClusterIP
+
+serviceMonitor:
+  enabled: true
+  additionalLabels:
+    app.kubernetes.io/part-of: cloudward
+
+networkPolicies:
+  enabled: true

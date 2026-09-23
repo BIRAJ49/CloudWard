@@ -295,65 +295,6 @@ class GitHubIssueService:
         return IssueAutomationResult(issue=issue, created=True)
 
 
-class GitHubPullRequestService:
-    def __init__(self, session: AsyncSession, client: GitHubAppClient) -> None:
-        self._session = session
-        self._client = client
-
-    async def create(
-        self,
-        *,
-        repository: str,
-        content: GitHubPRContent,
-        correlation_id: str,
-        incident_id: uuid.UUID | None = None,
-        recommendation_id: uuid.UUID | None = None,
-    ) -> GitHubPullRequestResult:
-        pull_request = await self._client.create_pull_request(repository, content)
-        dedupe_source = incident_id or recommendation_id or uuid.uuid4()
-        dedupe_key = hashlib.sha256(
-            f"pull-request:{dedupe_source}:{repository}:{content.head}:{content.base}".encode()
-        ).hexdigest()
-        details = redact_untrusted(
-            {
-                "head": content.head,
-                "base": content.base,
-                "draft": content.draft,
-                "recommendation_id": str(recommendation_id) if recommendation_id else None,
-            }
-        )
-        self._session.add(
-            GitHubAutomationRecord(
-                dedupe_key=dedupe_key,
-                incident_id=incident_id,
-                operation="PULL_REQUEST",
-                repository=pull_request.repository,
-                external_number=pull_request.number,
-                external_url=pull_request.url,
-                status="CREATED",
-                title=redact_text(content.title)[:255],
-                summary=redact_text(content.body)[:2000],
-                details=details if isinstance(details, dict) else {},
-            )
-        )
-        await record_audit(
-            self._session,
-            event_type="GITHUB_PR_CREATED",
-            correlation_id=correlation_id,
-            incident_id=incident_id,
-            action="CREATE_GITOPS_PR",
-            result="SUCCEEDED",
-            metadata={
-                "repository": pull_request.repository,
-                "pull_request_number": pull_request.number,
-                "pull_request_url": pull_request.url,
-                "recommendation_id": str(recommendation_id) if recommendation_id else None,
-            },
-        )
-        await self._session.flush()
-        return pull_request
-
-
 class GitHubChangeProposalService:
     """Create one allowlisted Git change and draft PR; never merge it."""
 

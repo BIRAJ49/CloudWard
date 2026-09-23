@@ -2,11 +2,15 @@
 
 **CloudWard — Autonomous Cloud Reliability, Security & FinOps Platform**
 
-CloudWard is a production-style platform-engineering project for safe, auditable local operations. Parts 1 and 2 established the deterministic control plane, real telemetry, bounded reliability remediation, runtime-security detection, verified containment, and the local Incident Lab. Part 3 adds controlled AI diagnosis, Git/source correlation, structured incident memory, deterministic OpenCost-backed FinOps, transactional approvals, GitHub App automation, Teams notifications, supply-chain enforcement, and staging-to-production GitOps promotion.
+CloudWard is a production-style platform-engineering project for safe, auditable cloud operations. Parts 1–3 established the deterministic local control plane, real telemetry, bounded reliability remediation, runtime-security containment, controlled AI investigation, OpenCost-backed FinOps, approvals, supply-chain enforcement, and staging-to-production GitOps. Part 4 adds repository-defined AWS infrastructure and operating procedures for an ephemeral `eu-north-1` deployment: S3 Terraform state, a two-AZ VPC, one EKS cluster, a single-EC2 Compose control plane, Karpenter, AWS load balancing/Gateway API, and real-cloud validation assets.
 
-CloudWard is deliberately not an LLM wired to `kubectl`. AI may diagnose, summarize, correlate, and select candidates from the action allowlist; it cannot authorize or execute. Every action remains typed, risk-scored, OPA-controlled, approval-gated when required, bounded, reversible where required, and audited. Part 3 remains local and provisions no AWS infrastructure.
+CloudWard is deliberately not an LLM wired to `kubectl`. AI may diagnose, summarize, correlate, and select candidates from the action allowlist; it cannot authorize or execute. Every action remains typed, risk-scored, OPA-controlled, approval-gated when required, bounded, reversible where required, and audited.
 
-## Part 3 architecture
+> **CloudWard uses AI for investigation, not authority.** Deterministic runbooks, risk scoring, policy enforcement, human approval, typed execution, and post-action verification determine what the platform is actually allowed to do.
+
+The Part 4 AWS assets are deployable definitions, not evidence that AWS has been provisioned or validated. Applying infrastructure, deploying production, and teardown always require separate explicit approval.
+
+## Architecture
 
 ```text
 Browser -> Nginx -> React dashboard
@@ -40,6 +44,8 @@ The first runbook handles one unhealthy, controller-managed demo pod in `cloudwa
 
 See the [AI architecture](docs/ai/openrouter.md), [dashboard design](docs/dashboard/operations-dashboard.md), [supply-chain pipeline](docs/supply-chain/pipeline.md), [GitOps promotion model](docs/gitops/promotion.md), and [remediation safety boundary](docs/architecture/safety-boundary.md).
 
+The AWS topology is documented in [Part 4 AWS architecture](docs/architecture/aws.md): Cloudflare reaches an origin-TLS Nginx endpoint on EC2; EC2 uses an instance role and bounded EKS RBAC; EKS retains AWS VPC CNI with Cilium chaining; stable On-Demand system capacity and bounded Karpenter classes support staging/production namespaces; and one shared ALB routes only selected demo services.
+
 ## Repository map
 
 ```text
@@ -54,12 +60,16 @@ runbooks/            Typed declarative remediation runbooks
 k8s/                 Namespaces, RBAC, and cluster bootstrap manifests
 helm/                 Demo service chart and environment values
 cloudward-gitops/    Argo CD desired state for the local demo
+cloudward-infra/     Terraform state bootstrap, AWS modules, and eu-north-1 environment
 scripts/             Reproducible local cluster and scenario commands
 docker/              Container and Nginx configuration
 docs/                Architecture, ADRs, operations, runbooks, and tests
+.github/workflows/   CI, releases, GitOps, Terraform plan, and protected apply
 ```
 
 The control plane remains a modular monolith. Telemetry stores and Kubernetes sensors are separate local platform components; decision authority remains in CloudWard and OPA.
+
+The [outbound cluster agent](docs/architecture/cluster-agent.md) adds namespace-scoped live inventory and bounded incident evidence without exposing telemetry services publicly. Intake and deployment are opt-in; agent reports cannot authorize actions or resolve incidents. See [master implementation status](docs/implementation-status.md) for implemented paths versus credentialed/live validation still required.
 
 ## Prerequisites
 
@@ -75,7 +85,7 @@ For native development and the complete cluster demo:
 - `kubectl`, Helm, and k3d (Cilium itself is installed by the bootstrap script)
 - enough local Docker capacity for the control plane and Kubernetes components
 
-No AWS account or cloud credentials are used.
+No AWS account or cloud credentials are used for local operation.
 
 ## Start the control plane
 
@@ -199,6 +209,8 @@ make cluster-validate
 
 Service integration tests require the Compose dependencies. Kubernetes, signature-admission, and end-to-end tests require the bootstrapped k3d cluster and real immutable image fixtures. An unavailable dependency is blocked, not passed.
 
+Terraform pull requests additionally run format, validation, TFLint, Trivy IaC, and a read-only AWS plan. The apply workflow is manual, main-only, checksummed, and protected by a required-reviewer GitHub Environment. It is never triggered by CI, and the repository contains no automatic destroy workflow.
+
 ## Stop and clean up
 
 ```bash
@@ -208,9 +220,17 @@ make cluster-destroy
 
 The destroy script targets only the explicitly named CloudWard k3d cluster. It does not touch AWS or unrelated local clusters.
 
-## Deliberately deferred after Part 3
+## AWS deployment and operations
 
-AWS Terraform deployment, remote Terraform state, VPC/EKS networking, EKS validation, EC2 control-plane hosting, Karpenter, AWS load balancing, public Cloudflare deployment, AWS budgets, and production cloud teardown remain deferred to Part 4. No AWS resource is provisioned by Part 3.
+Start with the [AWS deployment guide](docs/aws/deployment.md) and complete the [Terraform plan-review record](docs/aws/terraform-plan-review.md) before requesting approval. The repository documents [cost drivers](docs/aws/cost-inventory.md), [AWS operations](docs/operations/aws.md), [disaster recovery](docs/disaster-recovery/aws.md), the [AWS threat model](docs/security/aws-threat-model.md), and [user-controlled teardown](docs/aws/teardown.md).
+
+The AWS environment is intentionally ephemeral. An always-on EKS control plane plus EC2, EBS, ALB, public IPv4, logging, and transfer cannot honestly be guaranteed under the approximate USD 50 monthly target. AWS Budget alerts are warnings, not a spending cap; teardown after evidence capture is the main cost control.
+
+## Demo and project boundaries
+
+The Incident Lab exposes four reliability, three security, and two FinOps scenarios, all bounded to controlled staging targets. The [AWS demo guide](docs/demo/aws-portfolio-demo.md), [short video script](docs/demo/video-script.md), and [screenshot checklist](docs/demo/screenshots.md) define the evidence and sanitization expected for a portfolio demonstration.
+
+CloudWard v1 is not advertised as production-ready: it is single-tenant, single-region, uses one EKS cluster with namespace separation, has one non-HA EC2/PostgreSQL control plane, uses native Kubernetes Secrets, and has no GCP, predictive scaling, anomaly detection, or vector RAG. See the complete [limitations and roadmap](docs/limitations-and-roadmap.md).
 
 ## License
 

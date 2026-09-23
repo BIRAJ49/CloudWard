@@ -17,7 +17,7 @@ class GitHubAutomationRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     dedupe_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     incident_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("incidents.id", ondelete="RESTRICT"), index=True
+        Uuid, ForeignKey("incidents.id", ondelete="RESTRICT")
     )
     operation: Mapped[str] = mapped_column(String(32), nullable=False)
     repository: Mapped[str] = mapped_column(String(255), nullable=False)

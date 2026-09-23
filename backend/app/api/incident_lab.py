@@ -32,14 +32,14 @@ from app.demo.scenarios import SCENARIOS, ChaosScenario, ScenarioMechanism, get_
 from app.errors import CloudWardError
 from app.events import append_stream_event
 from app.kubernetes import KubernetesExecutor
-from app.policies.chaos import ChaosPolicyClient, ChaosPolicyInput
 from app.policies import OPAClient
+from app.policies.chaos import ChaosPolicyClient, ChaosPolicyInput
 from app.rbac import Permission, require_permission
 from app.remediation import RollbackCoordinator, RollbackDisposition
 from app.remediation.actions import ActionType
 from app.remediation.gitops import LocalGitOpsImageWriter
-from app.security.rate_limit import demo_rate_limit
 from app.security.quarantine import remove_quarantine
+from app.security.rate_limit import demo_rate_limit
 
 ACTIVE_EXPERIMENT_STATES = {
     ExperimentStatus.PENDING,
@@ -78,7 +78,6 @@ class ScenarioExecutionResponse(BaseModel):
     updated_at: datetime
 
     @computed_field
-    @property
     def current_step(self) -> str:
         return str(self.details.get("current_step", self.status.value))
 
@@ -93,7 +92,9 @@ async def list_scenarios(_: Viewer) -> list[ChaosScenario]:
     return list(SCENARIOS)
 
 
-@router.post("/scenarios/{scenario_id}/start", response_model=ScenarioExecutionResponse, status_code=202)
+@router.post(
+    "/scenarios/{scenario_id}/start", response_model=ScenarioExecutionResponse, status_code=202
+)
 async def start_scenario(
     scenario_id: str,
     _: ScenarioStartRequest,
@@ -122,21 +123,23 @@ async def start_scenario(
             raise CloudWardError("CHAOS_POLICY_DENIED", policy.reason, status_code=403)
     active = (
         await session.execute(
-            select(ChaosExecution).where(
+            select(ChaosExecution)
+            .where(
                 ChaosExecution.scenario_id == scenario.id,
                 ChaosExecution.status.in_(ACTIVE_EXPERIMENT_STATES),
-            ).limit(1)
+            )
+            .limit(1)
         )
     ).scalar_one_or_none()
     if active is not None:
         raise CloudWardError(
-            "SCENARIO_ALREADY_RUNNING", "This scenario already has an active execution", status_code=409
+            "SCENARIO_ALREADY_RUNNING",
+            "This scenario already has an active execution",
+            status_code=409,
         )
     pods = []
     if scenario.mechanism != ScenarioMechanism.FINOPS_ANALYSIS:
-        pods = await kubernetes.get_pods(
-            scenario.target_namespace, "cloudward.io/demo-target=true"
-        )
+        pods = await kubernetes.get_pods(scenario.target_namespace, "cloudward.io/demo-target=true")
         if not pods:
             raise CloudWardError(
                 "SCENARIO_TARGET_UNAVAILABLE",
@@ -259,8 +262,12 @@ async def start_scenario(
         },
     )
     await session.commit()
-    task_name = FINOPS_TASK if scenario.mechanism == ScenarioMechanism.FINOPS_ANALYSIS else MONITOR_TASK
-    queue = "evidence" if scenario.mechanism == ScenarioMechanism.FINOPS_ANALYSIS else "verification"
+    task_name = (
+        FINOPS_TASK if scenario.mechanism == ScenarioMechanism.FINOPS_ANALYSIS else MONITOR_TASK
+    )
+    queue = (
+        "evidence" if scenario.mechanism == ScenarioMechanism.FINOPS_ANALYSIS else "verification"
+    )
     kwargs = (
         {"scenario_id": scenario.id, "execution_id": str(execution.id)}
         if scenario.mechanism == ScenarioMechanism.FINOPS_ANALYSIS
@@ -306,7 +313,9 @@ async def get_execution(
 ) -> ChaosExecution:
     execution = await session.get(ChaosExecution, execution_id)
     if execution is None:
-        raise CloudWardError("EXECUTION_NOT_FOUND", "Scenario execution was not found", status_code=404)
+        raise CloudWardError(
+            "EXECUTION_NOT_FOUND", "Scenario execution was not found", status_code=404
+        )
     return execution
 
 
@@ -322,7 +331,9 @@ async def stop_execution(
 ) -> ChaosExecution:
     execution = await session.get(ChaosExecution, execution_id, with_for_update=True)
     if execution is None:
-        raise CloudWardError("EXECUTION_NOT_FOUND", "Scenario execution was not found", status_code=404)
+        raise CloudWardError(
+            "EXECUTION_NOT_FOUND", "Scenario execution was not found", status_code=404
+        )
     if execution.status not in ACTIVE_EXPERIMENT_STATES:
         return execution
     execution.status = ExperimentStatus.STOPPING
@@ -470,9 +481,7 @@ async def _restore_temporary_scale(
             .limit(1)
         )
     ).scalar_one_or_none()
-    rollback = RollbackCoordinator(
-        automatic_max_risk=settings.automatic_rollback_max_risk
-    )
+    rollback = RollbackCoordinator(automatic_max_risk=settings.automatic_rollback_max_risk)
     disposition = rollback.decide(
         action=scale_execution.action_type,
         risk_score=incident.risk_score if incident.risk_score is not None else 100,
@@ -511,8 +520,14 @@ async def _restore_temporary_scale(
 
 def _enforce_scenario_target(scenario: ChaosScenario, settings: Settings) -> None:
     if scenario.target_namespace in settings.denied_chaos_namespaces:
-        raise CloudWardError("CHAOS_TARGET_DENIED", "Protected namespace cannot be targeted", status_code=403)
+        raise CloudWardError(
+            "CHAOS_TARGET_DENIED", "Protected namespace cannot be targeted", status_code=403
+        )
     if scenario.target_namespace != settings.incident_lab_namespace:
-        raise CloudWardError("CHAOS_TARGET_DENIED", "Only cloudward-staging may be targeted", status_code=403)
+        raise CloudWardError(
+            "CHAOS_TARGET_DENIED", "Only cloudward-staging may be targeted", status_code=403
+        )
     if scenario.target_selector != {"cloudward.io/demo-target": "true"}:
-        raise CloudWardError("CHAOS_TARGET_DENIED", "Demo target label is required", status_code=403)
+        raise CloudWardError(
+            "CHAOS_TARGET_DENIED", "Demo target label is required", status_code=403
+        )

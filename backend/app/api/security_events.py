@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import hmac
+import json
 import uuid
 from typing import Annotated
 
@@ -21,15 +21,15 @@ from app.errors import CloudWardError
 from app.kubernetes import KubernetesExecutor
 from app.policies import OPAClient
 from app.rbac import Permission, require_permission
+from app.security.normalization import event_fingerprint
 from app.security.quarantine import apply_quarantine, remove_quarantine
 from app.security.schemas import (
     QuarantineResponse,
-    SecurityJobRequest,
     SecurityEventResponse,
+    SecurityJobRequest,
     SecurityWebhookResponse,
     TetragonSecurityEvent,
 )
-from app.security.normalization import event_fingerprint
 from app.security.service import ingest_security_event, security_event_response
 from app.security.webhook_auth import authenticate_tetragon_request, read_bounded_body
 
@@ -71,18 +71,16 @@ async def tetragon_webhook(
             status_code=422,
             details={"errors": details},
         ) from exc
-    fingerprint = event_fingerprint(
-        event, window_seconds=settings.security_dedup_window_seconds
-    )
+    fingerprint = event_fingerprint(event, window_seconds=settings.security_dedup_window_seconds)
     publisher = request.app.state.task_publisher
     task_id = f"security-{fingerprint}"
     try:
         publisher.send_task(
             "cloudward.tasks.security.process",
             kwargs={
-                "payload": SecurityJobRequest(
-                    fingerprint=fingerprint, event=event
-                ).model_dump(mode="json")
+                "payload": SecurityJobRequest(fingerprint=fingerprint, event=event).model_dump(
+                    mode="json"
+                )
             },
             task_id=task_id,
             queue="incident-ingestion",
@@ -129,9 +127,7 @@ async def process_security_event_job(
             "Security job fingerprint does not match its normalized event",
             status_code=422,
         )
-    outcome = await ingest_security_event(
-        session, payload.event, settings=settings, opa=opa
-    )
+    outcome = await ingest_security_event(session, payload.event, settings=settings, opa=opa)
     await session.commit()
     await session.refresh(outcome.event)
     return SecurityWebhookResponse(

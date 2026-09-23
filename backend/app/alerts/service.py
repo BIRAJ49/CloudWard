@@ -43,9 +43,7 @@ async def ingest_alerts(
     *,
     correlation_id: str,
 ) -> list[AlertIngestionResult]:
-    results: list[AlertIngestionResult] = []
-    for alert in alerts:
-        results.append(await _ingest_one(session, alert, correlation_id=correlation_id))
+    results = [await _ingest_one(session, alert, correlation_id=correlation_id) for alert in alerts]
     await session.flush()
     return results
 
@@ -90,7 +88,9 @@ async def _ingest_one(
     if existing is not None and existing.incident_id is not None:
         incident = await session.get(Incident, existing.incident_id)
     created_incident = False
-    if alert.status == AlertStatus.FIRING and (incident is None or incident.state in TERMINAL_STATES):
+    if alert.status == AlertStatus.FIRING and (
+        incident is None or incident.state in TERMINAL_STATES
+    ):
         incident = await create_incident(
             session,
             correlation_id=correlation_id,

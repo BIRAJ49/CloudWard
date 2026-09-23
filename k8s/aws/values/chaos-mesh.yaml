@@ -1,0 +1,48 @@
+clusterScoped: true
+timezone: UTC
+enableProfiling: false
+
+images:
+  registry: ghcr.io
+  tag: v2.8.4
+
+controllerManager:
+  replicaCount: 1
+  enableFilterNamespace: true
+  allowHostNetworkTesting: false
+  nodeSelector:
+    cloudward.io/capacity-class: system
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+chaosDaemon:
+  runtime: containerd
+  socketPath: /run/containerd/containerd.sock
+  privileged: true
+  nodeSelector:
+    cloudward.io/capacity-class: demo
+  tolerations:
+    - key: cloudward.io/capacity-class
+      operator: Equal
+      value: demo
+      effect: NoSchedule
+  mtls:
+    enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# CloudWard Incident Lab remains the only supported experiment launcher.
+dashboard:
+  create: false
+dnsServer:
+  create: false

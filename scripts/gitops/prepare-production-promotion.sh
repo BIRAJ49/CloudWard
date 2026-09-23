@@ -81,6 +81,8 @@ readonly rollback_digest
   "$rollback_digest" >/dev/null
 
 mkdir -p -- "$(dirname -- "$pr_body_file")"
+# Markdown backticks are literal text, not shell command substitutions.
+# shellcheck disable=SC2016
 {
   printf '## CloudWard production promotion\n\n'
   printf '| Field | Value |\n'

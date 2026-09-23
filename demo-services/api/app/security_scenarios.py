@@ -16,6 +16,11 @@ router = APIRouter(prefix="/demo/security", tags=["security-demo"])
 EXPECTED_C2_HOST = "cloudward-c2-simulator.cloudward-staging.svc.cluster.local"
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _c2_url() -> str:
     value = os.getenv("CLOUDWARD_C2_URL", f"http://{EXPECTED_C2_HOST}:8080/observe")
     parsed = urllib.parse.urlparse(value)
@@ -24,17 +29,24 @@ def _c2_url() -> str:
         or parsed.hostname != EXPECTED_C2_HOST
         or parsed.port != 8080
         or parsed.path != "/observe"
+        or parsed.username is not None
+        or parsed.password is not None
         or parsed.query
         or parsed.fragment
     ):
-        raise RuntimeError("CLOUDWARD_C2_URL must reference the fixed internal simulator")
+        raise RuntimeError(
+            "CLOUDWARD_C2_URL must reference the fixed internal simulator"
+        )
     return value
 
 
 def _probe() -> bool:
     request = urllib.request.Request(_c2_url(), method="GET")
     try:
-        with urllib.request.urlopen(request, timeout=2) as response:  # noqa: S310
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}), NoRedirect()
+        )
+        with opener.open(request, timeout=2) as response:
             return response.status == 200
     except (urllib.error.URLError, TimeoutError):
         return False

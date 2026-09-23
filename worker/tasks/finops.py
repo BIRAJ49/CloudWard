@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import os
+import uuid
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlparse
-from urllib.request import Request, urlopen
 
 from celery import Task
 
 from worker.celery_app import celery_app
+from worker.http import internal_url, post_json
 
 INTERNAL_API = os.getenv(
     "CLOUDWARD_INTERNAL_API_URL", "http://api:8000/api/v1/internal"
@@ -26,49 +25,20 @@ ALLOWED_SCENARIOS = {
 def _url(scenario_id: str) -> str:
     if scenario_id not in ALLOWED_SCENARIOS:
         raise RuntimeError("FinOps task scenario is outside the fixed catalog")
-    url = f"{INTERNAL_API}/finops/scenarios/{quote(scenario_id, safe='.-')}/run"
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or parsed.hostname not in {"api", "127.0.0.1"}:
-        raise RuntimeError("FinOps worker internal API URL is outside the allowed local boundary")
-    return url
+    return internal_url(INTERNAL_API, f"/finops/scenarios/{scenario_id}/run")
 
 
 def _post(scenario_id: str, execution_id: str) -> dict[str, Any]:
-    request = Request(
-        _url(scenario_id),
-        data=json.dumps({"execution_id": execution_id}, separators=(",", ":")).encode(),
-        headers={
-            "Authorization": f"Bearer {WORKER_TOKEN}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
+    return post_json(
+        _url(scenario_id), WORKER_TOKEN, {"execution_id": execution_id}, timeout=40
     )
-    with urlopen(request, timeout=40) as response:  # noqa: S310 - fixed internal URL
-        result = json.load(response)
-    if not isinstance(result, dict):
-        raise RuntimeError("internal API returned a non-object response")
-    return result
 
 
 def _mark_failed(execution_id: str, error_code: str) -> dict[str, Any]:
-    url = f"{INTERNAL_API}/finops/executions/{execution_id}/fail"
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or parsed.hostname not in {"api", "127.0.0.1"}:
-        raise RuntimeError("FinOps worker internal API URL is outside the allowed local boundary")
-    request = Request(
-        url,
-        data=json.dumps({"error_code": error_code}, separators=(",", ":")).encode(),
-        headers={
-            "Authorization": f"Bearer {WORKER_TOKEN}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
+    url = internal_url(
+        INTERNAL_API, f"/finops/executions/{uuid.UUID(execution_id)}/fail"
     )
-    with urlopen(request, timeout=25) as response:  # noqa: S310 - fixed internal URL
-        result = json.load(response)
-    if not isinstance(result, dict):
-        raise RuntimeError("internal API returned a non-object response")
-    return result
+    return post_json(url, WORKER_TOKEN, {"error_code": error_code}, timeout=25)
 
 
 @celery_app.task(

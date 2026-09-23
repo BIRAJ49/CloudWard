@@ -110,16 +110,6 @@ class GitHubIntegrationStatus(BaseModel):
     secrets_exposed: bool = False
 
 
-class GitHubWriteRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    repository: str
-    path: str
-    branch: str = Field(min_length=1, max_length=255)
-    message: str = Field(min_length=1, max_length=500)
-    content: str = Field(max_length=100_000)
-    expected_blob_sha: str | None = Field(default=None, max_length=64)
-
-
 class GitHubIssueContent(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(min_length=1, max_length=200)

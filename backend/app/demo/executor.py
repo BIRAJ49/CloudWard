@@ -38,7 +38,9 @@ def _selector(scenario: ChaosScenario) -> dict[str, Any]:
         "cloudward.io/demo-target": "true"
     }:
         raise CloudWardError(
-            "CHAOS_TARGET_DENIED", "Chaos target violates the immutable staging policy", status_code=403
+            "CHAOS_TARGET_DENIED",
+            "Chaos target violates the immutable staging policy",
+            status_code=403,
         )
     return {
         "namespaces": ["cloudward-staging"],

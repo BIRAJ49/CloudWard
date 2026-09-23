@@ -45,8 +45,12 @@ class ChaosPolicyClient:
                 "OPA_UNAVAILABLE", "Chaos policy evaluation is unavailable", status_code=503
             ) from exc
         if not isinstance(envelope, dict) or not isinstance(envelope.get("result"), dict):
-            raise CloudWardError("INVALID_OPA_RESPONSE", "OPA returned no chaos decision", status_code=502)
+            raise CloudWardError(
+                "INVALID_OPA_RESPONSE", "OPA returned no chaos decision", status_code=502
+            )
         try:
             return ChaosPolicyResult.model_validate(envelope["result"])
         except ValueError as exc:
-            raise CloudWardError("INVALID_OPA_RESPONSE", "OPA chaos decision was invalid", status_code=502) from exc
+            raise CloudWardError(
+                "INVALID_OPA_RESPONSE", "OPA chaos decision was invalid", status_code=502
+            ) from exc

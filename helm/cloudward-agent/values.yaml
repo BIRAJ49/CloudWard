@@ -1,0 +1,29 @@
+# Explicit opt-in: supply a real cluster identity, signed API image digest,
+# existing Secret, and operator-reviewed endpoint CIDRs before enabling.
+enabled: false
+image:
+  repository: ghcr.io/biraj49/cloudward-api
+  digest: ""
+clusterId: ""
+controlPlaneUrl: ""
+existingSecret: cloudward-agent-credentials
+environment: production
+intervalSeconds: 30
+controlPlaneCIDRs: []
+kubernetesApiCIDRs: []
+targets:
+  - namespace: cloudward-staging
+    service: cloudward-demo
+    deployment: cloudward-demo
+telemetry:
+  prometheus: http://prometheus.observability.svc.cluster.local:9090
+  loki: http://loki.observability.svc.cluster.local:3100
+  tempo: http://tempo.observability.svc.cluster.local:3200
+  opencost: http://opencost.opencost.svc.cluster.local:9003
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi

@@ -77,7 +77,9 @@ class FinOpsRecommendationService:
     ) -> tuple[AnalysisResult, FinOpsRecommendation | None]:
         if scenario_id not in FINOPS_SCENARIOS:
             raise CloudWardError(
-                "FINOPS_SCENARIO_NOT_FOUND", "FinOps scenario is not in the fixed catalog", status_code=404
+                "FINOPS_SCENARIO_NOT_FOUND",
+                "FinOps scenario is not in the fixed catalog",
+                status_code=404,
             )
         environment = Environment.STAGING
         window_seconds = self.settings.finops_demo_observation_window_seconds
@@ -87,7 +89,7 @@ class FinOpsRecommendationService:
                 deployment=self.settings.finops_demo_deployment,
                 window_seconds=window_seconds,
             )
-            observation = await self.prometheus.collect_workload(
+            workload_observation = await self.prometheus.collect_workload(
                 namespace=self.settings.finops_demo_namespace,
                 deployment=self.settings.finops_demo_deployment,
                 pod_pattern=self.settings.finops_demo_pod_pattern,
@@ -96,16 +98,16 @@ class FinOpsRecommendationService:
                 step_seconds=self.settings.finops_query_step_seconds,
                 allocation=allocation,
             )
-            result = self.engine.analyze_workload(observation)
+            result = self.engine.analyze_workload(workload_observation)
         else:
             allocation = await self.opencost.cluster_allocation(window_seconds=window_seconds)
-            observation = await self.prometheus.collect_nodes(
+            node_observation = await self.prometheus.collect_nodes(
                 environment=environment.value,
                 window_seconds=window_seconds,
                 step_seconds=self.settings.finops_query_step_seconds,
                 allocation=allocation,
             )
-            result = self.engine.analyze_nodes(observation)
+            result = self.engine.analyze_nodes(node_observation)
         recommendation = await self.persist_result(
             result,
             actor=actor,
@@ -161,7 +163,8 @@ class FinOpsRecommendationService:
             source_fingerprint=draft.source_fingerprint,
             proposal_version=1,
             expected_state_digest=expected_state_digest,
-            expires_at=utc_now() + timedelta(seconds=self.settings.finops_recommendation_ttl_seconds),
+            expires_at=utc_now()
+            + timedelta(seconds=self.settings.finops_recommendation_ttl_seconds),
             details={
                 "why": draft.why,
                 "scenario_id": result.scenario_id,
@@ -216,7 +219,9 @@ class FinOpsRecommendationService:
         ).scalar_one_or_none()
         if recommendation is None:
             raise CloudWardError(
-                "FINOPS_RECOMMENDATION_NOT_FOUND", "FinOps recommendation was not found", status_code=404
+                "FINOPS_RECOMMENDATION_NOT_FOUND",
+                "FinOps recommendation was not found",
+                status_code=404,
             )
         if recommendation.expires_at <= utc_now() and recommendation.status not in {
             FinOpsStatus.APPROVED,
@@ -237,9 +242,7 @@ class FinOpsRecommendationService:
             )
         return recommendation
 
-    def build_gitops_proposal(
-        self, recommendation: FinOpsRecommendation
-    ) -> GitOpsChangeProposal:
+    def build_gitops_proposal(self, recommendation: FinOpsRecommendation) -> GitOpsChangeProposal:
         if recommendation.recommendation_type != "WORKLOAD_RIGHTSIZING":
             raise CloudWardError(
                 "FINOPS_PR_NOT_APPLICABLE",
@@ -269,7 +272,9 @@ class FinOpsRecommendationService:
         requests = recommendation.recommended_config.get("requests")
         if not isinstance(requests, dict):
             raise CloudWardError(
-                "FINOPS_RECOMMENDATION_INVALID", "Recommendation has no typed resource requests", status_code=409
+                "FINOPS_RECOMMENDATION_INVALID",
+                "Recommendation has no typed resource requests",
+                status_code=409,
             )
         cpu_cores = float(requests["cpu_cores"])
         memory_bytes = int(requests["memory_bytes"])
@@ -281,8 +286,8 @@ class FinOpsRecommendationService:
             f"proposalVersion: {recommendation.proposal_version}\n"
             "resources:\n"
             "  requests:\n"
-            f"    cpu: \"{cpu}\"\n"
-            f"    memory: \"{memory}\"\n"
+            f'    cpu: "{cpu}"\n'
+            f'    memory: "{memory}"\n'
         )
         current = json.dumps(recommendation.current_config, sort_keys=True, indent=2)
         proposed = json.dumps(recommendation.recommended_config, sort_keys=True, indent=2)
@@ -329,24 +334,32 @@ class FinOpsRecommendationService:
             ) from exc
         if not isinstance(document, dict):
             raise CloudWardError(
-                "FINOPS_GITOPS_VALUES_INVALID", "Allowlisted GitOps values are not an object", status_code=409
+                "FINOPS_GITOPS_VALUES_INVALID",
+                "Allowlisted GitOps values are not an object",
+                status_code=409,
             )
         workload = document.get("cloudward-demo")
         if not isinstance(workload, dict):
             raise CloudWardError(
-                "FINOPS_GITOPS_TARGET_MISSING", "Fixed cloudward-demo values target is missing", status_code=409
+                "FINOPS_GITOPS_TARGET_MISSING",
+                "Fixed cloudward-demo values target is missing",
+                status_code=409,
             )
         resources = workload.get("resources")
         requests = resources.get("requests") if isinstance(resources, dict) else None
         if not isinstance(requests, dict):
             raise CloudWardError(
-                "FINOPS_GITOPS_TARGET_MISSING", "Fixed resource requests target is missing", status_code=409
+                "FINOPS_GITOPS_TARGET_MISSING",
+                "Fixed resource requests target is missing",
+                status_code=409,
             )
         current_requests = recommendation.current_config.get("requests")
         proposed_requests = recommendation.recommended_config.get("requests")
         if not isinstance(current_requests, dict) or not isinstance(proposed_requests, dict):
             raise CloudWardError(
-                "FINOPS_RECOMMENDATION_INVALID", "Recommendation resource requests are invalid", status_code=409
+                "FINOPS_RECOMMENDATION_INVALID",
+                "Recommendation resource requests are invalid",
+                status_code=409,
             )
         current_cpu = _parse_cpu(requests.get("cpu"))
         current_memory = _parse_memory(requests.get("memory"))
@@ -363,7 +376,10 @@ class FinOpsRecommendationService:
         requests["memory"] = (
             f"{math_ceil(int(proposed_requests['memory_bytes']) / (1024 * 1024))}Mi"
         )
-        return yaml.safe_dump(document, sort_keys=False)
+        rendered = yaml.safe_dump(document, sort_keys=False)
+        if not isinstance(rendered, str):
+            raise TypeError("YAML serializer returned a non-text result")
+        return rendered
 
     async def record_pr_created(
         self,

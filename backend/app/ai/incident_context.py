@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from typing import Any
 
 from sqlalchemy import select
@@ -220,10 +221,7 @@ def _log_lines(value: Any) -> list[str]:
         return []
     lines: list[str] = []
     for sample in value[:50]:
-        if isinstance(sample, dict):
-            line = sample.get("line", sample.get("message"))
-        else:
-            line = sample
+        line = sample.get("line", sample.get("message")) if isinstance(sample, dict) else sample
         if line is not None:
             lines.append(str(line)[:500])
     return lines
@@ -245,10 +243,13 @@ def _trace_duration(value: Any) -> float:
     if not isinstance(value, dict):
         return 0.0
     raw = value.get("durationMs", value.get("duration", 0))
-    try:
-        return max(0.0, float(raw))
-    except (TypeError, ValueError):
+    if isinstance(raw, bool) or not isinstance(raw, (str, int, float)):
         return 0.0
+    try:
+        duration = float(raw)
+    except (OverflowError, ValueError):
+        return 0.0
+    return max(0.0, duration) if math.isfinite(duration) else 0.0
 
 
 def _number(value: Any) -> int | float | None:

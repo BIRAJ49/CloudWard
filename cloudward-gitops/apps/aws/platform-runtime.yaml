@@ -1,0 +1,67 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudward-aws-capacity
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  project: cloudward-aws-platform
+  source:
+    repoURL: https://github.com/biraj49/CloudWard.git
+    targetRevision: main
+    path: k8s/aws/karpenter
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    # Manual first sync is intentional. Pin the tested immutable AL2023 alias
+    # before allowing these pools to create any EC2 capacity.
+    syncOptions:
+      - ServerSideApply=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudward-aws-public-gateway
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  project: cloudward-aws-platform
+  source:
+    repoURL: https://github.com/biraj49/CloudWard.git
+    targetRevision: main
+    path: k8s/aws/gateway
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cloudward-ingress
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudward-aws-forwarding
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  project: cloudward-aws-platform
+  source:
+    repoURL: https://github.com/biraj49/CloudWard.git
+    targetRevision: main
+    path: k8s/aws/forwarding
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cloudward-system
+  syncPolicy:
+    # Manual first sync is intentional. Replace the .invalid control-plane
+    # hostname, publish the signed forwarder digest, and create both webhook
+    # Secrets before enabling reconciliation.
+    syncOptions:
+      - ServerSideApply=true

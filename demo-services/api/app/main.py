@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-import os
-import time
 import asyncio
 import contextlib
+import hmac
+import os
+import time
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, status
-from fastapi.responses import JSONResponse
 import httpx
+from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
-from app.telemetry import install_http_telemetry, install_tracing
 from app.security_scenarios import router as security_router
+from app.telemetry import install_http_telemetry, install_tracing
 
 SERVICE_NAME = "cloudward-demo-api"
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "0.2.0")
@@ -38,6 +40,17 @@ class StateResponse(BaseModel):
     state: str
     ready: bool
     mechanism: str = "sentinel_file"
+
+
+class ReleaseMetadataResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    service: str = SERVICE_NAME
+    version: str = SERVICE_VERSION
+    environment: str
+    source_commit: str | None = None
+    image_digest: str | None = None
+    release_identifier: str | None = None
 
 
 class ReadinessState:
@@ -64,7 +77,9 @@ class FailureState:
 
     @property
     def bad_release(self) -> bool:
-        return self.bad_release_file.exists() or _env_enabled("DEMO_BAD_RELEASE_ENABLED", False)
+        return self.bad_release_file.exists() or _env_enabled(
+            "DEMO_BAD_RELEASE_ENABLED", False
+        )
 
     def enable_bad_release(self) -> None:
         self.bad_release_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -89,10 +104,23 @@ def _env_enabled(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+async def _generate_demo_traffic() -> None:
+    await asyncio.sleep(1)
+    async with httpx.AsyncClient(
+        base_url="http://127.0.0.1:8080", timeout=httpx.Timeout(2.0)
+    ) as client:
+        while True:
+            with contextlib.suppress(httpx.HTTPError):
+                await client.get("/demo/work", headers={"X-Request-ID": "demo-traffic"})
+            await asyncio.sleep(1)
+
+
 def create_app(
     *,
     state_path: Path | None = None,
     control_enabled: bool | None = None,
+    control_auth_required: bool | None = None,
+    control_token: str | None = None,
 ) -> FastAPI:
     readiness = ReadinessState(
         state_path or Path(os.getenv("DEMO_UNHEALTHY_STATE_FILE", DEFAULT_STATE_FILE))
@@ -104,8 +132,32 @@ def create_app(
         if control_enabled is None
         else control_enabled
     )
+    auth_required = (
+        _env_enabled("DEMO_CONTROL_AUTH_REQUIRED", False)
+        if control_auth_required is None
+        else control_auth_required
+    )
+    expected_control_token = (
+        os.getenv("DEMO_CONTROL_TOKEN", "") if control_token is None else control_token
+    )
+    if auth_required and len(expected_control_token) < 32:
+        raise RuntimeError("DEMO_CONTROL_TOKEN must contain at least 32 characters")
     traffic_enabled = _env_enabled("DEMO_TRAFFIC_ENABLED", controls_available)
-    traffic_task: asyncio.Task[None] | None = None
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        traffic_task = (
+            asyncio.create_task(_generate_demo_traffic(), name="cloudward-demo-traffic")
+            if traffic_enabled
+            else None
+        )
+        try:
+            yield
+        finally:
+            if traffic_task is not None:
+                traffic_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await traffic_task
 
     application = FastAPI(
         title="CloudWard Demo API",
@@ -116,7 +168,20 @@ def create_app(
         version=SERVICE_VERSION,
         docs_url=None,
         redoc_url=None,
+        lifespan=lifespan,
     )
+
+    def require_demo_control(
+        supplied_token: Annotated[
+            str | None, Header(alias="X-CloudWard-Demo-Token")
+        ] = None,
+    ) -> None:
+        _require_controls(
+            controls_available,
+            auth_required=auth_required,
+            supplied_token=supplied_token,
+            expected_token=expected_control_token,
+        )
 
     @application.get("/", response_model=HealthResponse)
     def root() -> HealthResponse:
@@ -129,6 +194,15 @@ def create_app(
     def live() -> HealthResponse:
         # Controlled readiness failure must never make the process appear dead.
         return HealthResponse(status="alive")
+
+    @application.get("/metadata", response_model=ReleaseMetadataResponse)
+    def release_metadata() -> ReleaseMetadataResponse:
+        return ReleaseMetadataResponse(
+            environment=environment,
+            source_commit=os.getenv("SOURCE_COMMIT") or None,
+            image_digest=os.getenv("IMAGE_DIGEST") or None,
+            release_identifier=os.getenv("RELEASE_IDENTIFIER") or None,
+        )
 
     @application.get(
         "/health/ready",
@@ -148,9 +222,12 @@ def create_app(
             content=payload.model_dump(),
         )
 
-    @application.get("/demo/state", response_model=StateResponse)
+    @application.get(
+        "/demo/state",
+        response_model=StateResponse,
+        dependencies=[Depends(require_demo_control)],
+    )
     def get_state() -> StateResponse:
-        _require_controls(controls_available)
         return _state_response(readiness)
 
     @application.get("/demo/work")
@@ -175,65 +252,48 @@ def create_app(
         time.sleep(delay)
         return {"status": "ok", "controlled_delay_seconds": delay}
 
-    @application.post("/demo/state/bad-release")
+    @application.post(
+        "/demo/state/bad-release", dependencies=[Depends(require_demo_control)]
+    )
     def make_bad_release() -> dict[str, str | bool]:
-        _require_controls(controls_available)
         failures.enable_bad_release()
         return {"state": "bad_release", "active": True}
 
-    @application.post("/demo/state/bad-release/clear")
+    @application.post(
+        "/demo/state/bad-release/clear", dependencies=[Depends(require_demo_control)]
+    )
     def clear_bad_release() -> dict[str, str | bool]:
-        _require_controls(controls_available)
         failures.clear_bad_release()
         return {"state": "healthy_release", "active": False}
 
-    async def generate_demo_traffic() -> None:
-        await asyncio.sleep(1)
-        async with httpx.AsyncClient(
-            base_url="http://127.0.0.1:8080", timeout=httpx.Timeout(2.0)
-        ) as client:
-            while True:
-                try:
-                    await client.get("/demo/work", headers={"X-Request-ID": "demo-traffic"})
-                except httpx.HTTPError:
-                    pass
-                await asyncio.sleep(1)
-
-    async def start_demo_traffic() -> None:
-        nonlocal traffic_task
-        if traffic_enabled:
-            traffic_task = asyncio.create_task(
-                generate_demo_traffic(), name="cloudward-demo-traffic"
-            )
-
-    async def stop_demo_traffic() -> None:
-        if traffic_task is not None:
-            traffic_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await traffic_task
-
-    application.add_event_handler("startup", start_demo_traffic)
-    application.add_event_handler("shutdown", stop_demo_traffic)
-
-    @application.post("/demo/state/unhealthy", response_model=StateResponse)
+    @application.post(
+        "/demo/state/unhealthy",
+        response_model=StateResponse,
+        dependencies=[Depends(require_demo_control)],
+    )
     def make_unhealthy(
         request_id: Annotated[str | None, Header(alias="X-Request-ID")] = None,
     ) -> StateResponse:
         del request_id  # Accepted for cross-service tracing; never persisted here.
-        _require_controls(controls_available)
         readiness.make_unhealthy()
         return _state_response(readiness)
 
-    @application.post("/demo/state/healthy", response_model=StateResponse)
+    @application.post(
+        "/demo/state/healthy",
+        response_model=StateResponse,
+        dependencies=[Depends(require_demo_control)],
+    )
     def make_healthy(
         request_id: Annotated[str | None, Header(alias="X-Request-ID")] = None,
     ) -> StateResponse:
         del request_id
-        _require_controls(controls_available)
         readiness.make_healthy()
         return _state_response(readiness)
 
-    application.include_router(security_router)
+    application.include_router(
+        security_router,
+        dependencies=[Depends(require_demo_control)],
+    )
     install_http_telemetry(
         application,
         service_name=SERVICE_NAME,
@@ -250,11 +310,25 @@ def create_app(
     return application
 
 
-def _require_controls(enabled: bool) -> None:
+def _require_controls(
+    enabled: bool,
+    *,
+    auth_required: bool = False,
+    supplied_token: str | None = None,
+    expected_token: str = "",
+) -> None:
     if not enabled:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Demo state controls are disabled",
+        )
+    if auth_required and (
+        supplied_token is None
+        or not hmac.compare_digest(supplied_token, expected_token)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Demo control authentication failed",
         )
 
 

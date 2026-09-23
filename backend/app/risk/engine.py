@@ -68,9 +68,13 @@ class RiskResult(BaseModel):
 
 DESTRUCTIVENESS: dict[ActionType, int] = {
     ActionType.DELETE_UNHEALTHY_POD: 3,
+    ActionType.RESTART_POD: 3,
     ActionType.SCALE_STAGING_DEPLOYMENT: 5,
+    ActionType.SCALE_WORKLOAD: 5,
     ActionType.REVERT_IMAGE: 8,
+    ActionType.ROLLBACK_DEPLOYMENT: 8,
     ActionType.APPLY_QUARANTINE: 9,
+    ActionType.QUARANTINE_WORKLOAD: 9,
     ActionType.REMOVE_QUARANTINE: 7,
     ActionType.CREATE_GITOPS_PR: 2,
     ActionType.CREATE_TERRAFORM_PR: 4,

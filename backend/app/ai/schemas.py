@@ -13,9 +13,6 @@ from app.remediation.actions import ActionType
 
 class AIOperation(StrEnum):
     DIAGNOSE_INCIDENT = "diagnose_incident"
-    SUMMARIZE_EVIDENCE = "summarize_evidence"
-    CORRELATE_CHANGE = "correlate_change"
-    SUGGEST_ACTIONS = "suggest_actions"
 
 
 class AIStatus(StrEnum):
@@ -75,27 +72,6 @@ class DiagnosisProposal(BaseModel):
         return value
 
 
-class EvidenceSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    summary: str = Field(min_length=1, max_length=2000)
-    evidence_refs: list[str] = Field(default_factory=list, max_length=20)
-
-
-class ChangeCorrelation(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    correlated: bool
-    confidence: float = Field(ge=0.0, le=1.0, strict=True)
-    evidence_refs: list[str] = Field(default_factory=list, max_length=20)
-    explanation: str = Field(min_length=1, max_length=1500)
-
-
-class ActionSuggestion(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    action_candidates: list[ActionType] = Field(default_factory=list, max_length=5)
-    evidence_refs: list[str] = Field(default_factory=list, max_length=20)
-    explanation: str = Field(min_length=1, max_length=1500)
-
-
 class TokenUsage(BaseModel):
     model_config = ConfigDict(extra="forbid")
     prompt_tokens: int | None = Field(default=None, ge=0)
@@ -109,7 +85,7 @@ class ProviderResult(BaseModel):
     operation: AIOperation
     requested_model: str
     actual_model: str
-    output: DiagnosisProposal | EvidenceSummary | ChangeCorrelation | ActionSuggestion
+    output: DiagnosisProposal
     latency_ms: int = Field(ge=0)
     usage: TokenUsage = Field(default_factory=TokenUsage)
     input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -188,8 +164,7 @@ class AIActionEvaluationRequest(BaseModel):
         if len(value) > 30:
             raise ValueError("labels must contain at most 30 entries")
         if any(
-            not key or not item or len(key) > 253 or len(item) > 253
-            for key, item in value.items()
+            not key or not item or len(key) > 253 or len(item) > 253 for key, item in value.items()
         ):
             raise ValueError("label keys and values must contain 1-253 characters")
         return value

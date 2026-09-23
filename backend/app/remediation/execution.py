@@ -243,7 +243,9 @@ class RollbackCoordinator:
             )
         proposal = await session.get(ActionProposal, failed_execution.proposal_id)
         if proposal is None:
-            raise CloudWardError("ACTION_PROPOSAL_NOT_FOUND", "Rollback proposal was not found", status_code=404)
+            raise CloudWardError(
+                "ACTION_PROPOSAL_NOT_FOUND", "Rollback proposal was not found", status_code=404
+            )
         if failed_execution.attempt >= 3:
             raise CloudWardError(
                 "REMEDIATION_ATTEMPT_LIMIT",

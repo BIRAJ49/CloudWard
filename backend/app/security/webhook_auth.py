@@ -17,13 +17,23 @@ _development_nonces: dict[str, float] = {}
 _development_rates: dict[int, int] = {}
 
 
-async def read_bounded_body(request: Request, maximum: int) -> bytes:
+async def read_bounded_body(
+    request: Request,
+    maximum: int,
+    *,
+    error_code: str = "SECURITY_EVENT_TOO_LARGE",
+) -> bytes:
     content_length = request.headers.get("content-length")
     if content_length is not None:
         try:
-            if int(content_length) > maximum:
+            length = int(content_length)
+            if length < 0:
+                raise ValueError("negative Content-Length")
+            if length > maximum:
                 raise CloudWardError(
-                    "SECURITY_EVENT_TOO_LARGE", "Security event exceeds the body limit", status_code=413
+                    error_code,
+                    "Request exceeds the body limit",
+                    status_code=413,
                 )
         except ValueError as exc:
             raise CloudWardError(
@@ -31,17 +41,13 @@ async def read_bounded_body(request: Request, maximum: int) -> bytes:
             ) from exc
     body = bytearray()
     async for chunk in request.stream():
+        if len(body) + len(chunk) > maximum:
+            raise CloudWardError(error_code, "Request exceeds the body limit", status_code=413)
         body.extend(chunk)
-        if len(body) > maximum:
-            raise CloudWardError(
-                "SECURITY_EVENT_TOO_LARGE", "Security event exceeds the body limit", status_code=413
-            )
     return bytes(body)
 
 
-async def authenticate_tetragon_request(
-    request: Request, body: bytes, settings: Settings
-) -> None:
+async def authenticate_tetragon_request(request: Request, body: bytes, settings: Settings) -> None:
     timestamp_text = request.headers.get("X-CloudWard-Timestamp", "")
     nonce = request.headers.get("X-CloudWard-Nonce", "")
     supplied = request.headers.get("X-CloudWard-Signature", "")

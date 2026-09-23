@@ -171,10 +171,14 @@ class ApprovalService:
                 status_code=409,
             )
         incident = await self.session.get(Incident, approval.incident_id, with_for_update=True)
-        proposal = await self.session.get(ActionProposal, approval.proposal_id, with_for_update=True)
+        proposal = await self.session.get(
+            ActionProposal, approval.proposal_id, with_for_update=True
+        )
         if incident is None or proposal is None:
             await self._invalidate(approval, "Bound incident or proposal no longer exists")
-            raise CloudWardError("APPROVAL_CONTEXT_MISSING", "Approval context no longer exists", status_code=409)
+            raise CloudWardError(
+                "APPROVAL_CONTEXT_MISSING", "Approval context no longer exists", status_code=409
+            )
 
         if decision == ApprovalDecision.REJECTED:
             proposal.status = RecordStatus.REJECTED
@@ -252,7 +256,9 @@ class ApprovalService:
             return f"Proposal status changed to {proposal.status.value}"
         execution = (
             await self.session.execute(
-                select(ActionExecution.id).where(ActionExecution.proposal_id == proposal.id).limit(1)
+                select(ActionExecution.id)
+                .where(ActionExecution.proposal_id == proposal.id)
+                .limit(1)
             )
         ).scalar_one_or_none()
         if execution is not None:
@@ -324,7 +330,10 @@ class ApprovalService:
         if isinstance(deployment_name, str):
             deployment = await self.kubernetes.get_deployment(namespace, deployment_name)
             expected_replicas = parameters.get("observed_replicas")
-            if isinstance(expected_replicas, int) and deployment.desired_replicas != expected_replicas:
+            if (
+                isinstance(expected_replicas, int)
+                and deployment.desired_replicas != expected_replicas
+            ):
                 return {
                     "namespace": namespace,
                     "name": deployment_name,

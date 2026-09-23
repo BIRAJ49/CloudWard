@@ -90,9 +90,7 @@ async def evaluate_ai_action_candidate(
 
     service = await session.get(Service, incident.service_id) if incident.service_id else None
     namespace = request.namespace or (service.namespace if service else "default")
-    resource_name = request.resource_name or (
-        service.deployment_name if service else "unspecified"
-    )
+    resource_name = request.resource_name or (service.deployment_name if service else "unspecified")
     labels = _bounded_labels(request.labels or (service.labels if service else {}))
     confidence = diagnosis.confidence if diagnosis.confidence is not None else 0.0
     risk = RiskEngine.calculate(

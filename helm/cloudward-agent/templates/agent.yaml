@@ -1,0 +1,192 @@
+{{- if .Values.enabled }}
+{{- $name := printf "%s-agent" .Release.Name | trunc 50 | trimSuffix "-" }}
+{{- $cluster := required "clusterId must be a registered CloudWard cluster UUID" .Values.clusterId }}
+{{- $origin := required "controlPlaneUrl is required" .Values.controlPlaneUrl }}
+{{- $digest := required "image.digest is required" .Values.image.digest }}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" $digest) }}{{ fail "image.digest must be an immutable sha256 digest" }}{{ end }}
+{{- if not (regexMatch "^https://[^/?#@]+/?$" $origin) }}{{ fail "controlPlaneUrl must be an HTTPS origin" }}{{ end }}
+{{- if not .Values.controlPlaneCIDRs }}{{ fail "controlPlaneCIDRs must restrict outbound control-plane HTTPS" }}{{ end }}
+{{- if not .Values.kubernetesApiCIDRs }}{{ fail "kubernetesApiCIDRs must identify the Kubernetes API endpoints" }}{{ end }}
+{{- range concat .Values.controlPlaneCIDRs .Values.kubernetesApiCIDRs }}
+{{- if or (eq . "0.0.0.0/0") (eq . "::/0") }}{{ fail "unrestricted agent egress CIDRs are forbidden" }}{{ end }}
+{{- end }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $name }}
+        app.kubernetes.io/part-of: cloudward
+    spec:
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 100
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: collector
+          image: {{ printf "%s@%s" .Values.image.repository $digest | quote }}
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.cluster_agent.runtime"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: AGENT_ENVIRONMENT
+              value: {{ .Values.environment | quote }}
+            - name: AGENT_CLUSTER_ID
+              value: {{ $cluster | quote }}
+            - name: AGENT_CONTROL_PLANE_URL
+              value: {{ $origin | quote }}
+            - name: AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "existingSecret is required" .Values.existingSecret }}
+                  key: token
+            - name: AGENT_TARGETS
+              value: {{ toJson .Values.targets | quote }}
+            - name: AGENT_INTERVAL_SECONDS
+              value: {{ .Values.intervalSeconds | quote }}
+            - name: AGENT_PROMETHEUS_URL
+              value: {{ .Values.telemetry.prometheus | quote }}
+            - name: AGENT_LOKI_URL
+              value: {{ .Values.telemetry.loki | quote }}
+            - name: AGENT_TEMPO_URL
+              value: {{ .Values.telemetry.tempo | quote }}
+            - name: AGENT_OPENCOST_URL
+              value: {{ .Values.telemetry.opencost | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /var/run/cloudward-agent
+            - name: service-account
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+          readinessProbe:
+            exec:
+              command: ["python", "-m", "app.cluster_agent.health"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          livenessProbe:
+            exec:
+              command: ["python", "-m", "app.cluster_agent.health", "--liveness"]
+            initialDelaySeconds: 120
+            periodSeconds: 30
+      volumes:
+        - name: state
+          emptyDir:
+            sizeLimit: 1Mi
+        - name: service-account
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        {{- range concat .Values.controlPlaneCIDRs .Values.kubernetesApiCIDRs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: opencost
+      ports:
+        - {protocol: TCP, port: 9090}
+        - {protocol: TCP, port: 3100}
+        - {protocol: TCP, port: 3200}
+        - {protocol: TCP, port: 9003}
+{{- range $index, $target := .Values.targets }}
+{{- if not (has $target.namespace (list "cloudward-staging" "cloudward-production")) }}{{ fail "agent target namespace is outside the read-only allowlist" }}{{ end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}-{{ $index }}
+  namespace: {{ $target.namespace }}
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    resourceNames: [{{ $target.deployment | quote }}]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}-{{ $index }}
+  namespace: {{ $target.namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}-{{ $index }}
+{{- end }}
+{{- end }}

@@ -42,7 +42,8 @@ def normalized_payload(event: TetragonSecurityEvent) -> dict[str, Any]:
         "workload_labels": event.workload_labels,
         "secrets_or_data_exposure": event.secrets_or_data_exposure,
     }
-    return redact_security_value(payload)
+    redacted = redact_security_value(payload)
+    return redacted if isinstance(redacted, dict) else {}
 
 
 def event_fingerprint(event: TetragonSecurityEvent, *, window_seconds: int) -> str:
@@ -61,4 +62,3 @@ def event_fingerprint(event: TetragonSecurityEvent, *, window_seconds: int) -> s
     }
     serialized = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode()).hexdigest()
-

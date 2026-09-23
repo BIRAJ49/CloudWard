@@ -5,6 +5,7 @@ set -Eeuo pipefail
 
 readonly CLOUDWARD_CLUSTER_NAME="${CLOUDWARD_CLUSTER_NAME:-cloudward}"
 readonly CLOUDWARD_KUBECONFIG_CONTEXT="k3d-${CLOUDWARD_CLUSTER_NAME}"
+readonly CLOUDWARD_EXPECTED_KUBECONFIG_CONTEXT="${EXPECTED_KUBE_CONTEXT:-$CLOUDWARD_KUBECONFIG_CONTEXT}"
 readonly K3S_IMAGE="rancher/k3s:v1.35.7-k3s1"
 readonly CILIUM_VERSION="1.20.0"
 readonly ARGO_CD_CHART_VERSION="10.3.3"
@@ -39,8 +40,8 @@ require_command() {
 require_context() {
   local current_context
   current_context="$(kubectl config current-context 2>/dev/null || true)"
-  [[ "$current_context" == "$CLOUDWARD_KUBECONFIG_CONTEXT" ]] ||
-    die "refusing to operate on context '$current_context'; expected '$CLOUDWARD_KUBECONFIG_CONTEXT'"
+  [[ "$current_context" == "$CLOUDWARD_EXPECTED_KUBECONFIG_CONTEXT" ]] ||
+    die "refusing to operate on context '$current_context'; expected '$CLOUDWARD_EXPECTED_KUBECONFIG_CONTEXT'"
 }
 
 cluster_exists() {

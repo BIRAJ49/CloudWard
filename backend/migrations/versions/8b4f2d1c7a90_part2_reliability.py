@@ -108,9 +108,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["incident_id"], ["incidents.id"], ondelete="SET NULL"
-        ),
+        sa.ForeignKeyConstraint(["incident_id"], ["incidents.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("source", "fingerprint"),
     )
@@ -136,7 +134,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
-            "attempt >= 1 AND attempt <= 3", name="ck_verification_records_verification_attempt_range"
+            "attempt >= 1 AND attempt <= 3",
+            name="ck_verification_records_verification_attempt_range",
         ),
         sa.ForeignKeyConstraint(
             ["action_execution_id"], ["action_executions.id"], ondelete="SET NULL"
@@ -145,9 +144,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("incident_id", "attempt"),
     )
-    op.create_index(
-        "ix_verification_records_incident_id", "verification_records", ["incident_id"]
-    )
+    op.create_index("ix_verification_records_incident_id", "verification_records", ["incident_id"])
 
     op.create_table(
         "chaos_executions",
@@ -223,9 +220,7 @@ def downgrade() -> None:
         type_="foreignkey",
     )
     op.drop_index("ix_action_executions_idempotency_key", table_name="action_executions")
-    op.drop_constraint(
-        "uq_action_executions_idempotency_key", "action_executions", type_="unique"
-    )
+    op.drop_constraint("uq_action_executions_idempotency_key", "action_executions", type_="unique")
     op.drop_column("action_executions", "rolled_back_at")
     op.drop_column("action_executions", "rollback_of_execution_id")
     op.drop_column("action_executions", "idempotency_key")

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit import record_audit
 from app.config import Settings
 from app.db.base import utc_now
-from app.db.models import ActorType, Incident, Notification, RecordStatus
+from app.db.models import Incident, Notification, RecordStatus
 from app.errors import CloudWardError
 from app.logging import redact
 from app.notifications.notifiers import (
@@ -137,7 +137,7 @@ class NotificationService:
             )
             notification.last_error = exc.code
             notification.next_attempt_at = utc_now() + timedelta(
-                seconds=min(2 ** notification.attempts, 300)
+                seconds=min(2**notification.attempts, 300)
             )
             await record_audit(
                 self.session,
@@ -229,8 +229,9 @@ async def queue_incident_notification(
     channels = ["dashboard"]
     if settings.teams_workflow_webhook_url is not None:
         channels.append("teams")
-    if event_type in {"incident_escalated", "remediation_failed"} and getattr(
-        settings, "github_app_issue_repositories", ""
+    if (
+        event_type in {"incident_escalated", "remediation_failed"}
+        and settings.github_app_issue_repositories
     ):
         channels.append("github_issue")
     return await NotificationService(session, settings).queue(

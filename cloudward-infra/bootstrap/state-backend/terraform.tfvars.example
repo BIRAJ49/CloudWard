@@ -1,0 +1,5 @@
+aws_region  = "eu-north-1"
+bucket_name = "REPLACE_WITH_GLOBALLY_UNIQUE_CLOUDWARD_STATE_BUCKET"
+
+# Attach only after reviewing the policy. Empty leaves all attachments manual.
+state_access_role_names = []

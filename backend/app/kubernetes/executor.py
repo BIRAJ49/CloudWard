@@ -293,9 +293,7 @@ class KubernetesExecutor:
             operation_phase=(
                 str(operation_state["phase"]) if operation_state.get("phase") else None
             ),
-            reconciled_at=(
-                str(status["reconciledAt"]) if status.get("reconciledAt") else None
-            ),
+            reconciled_at=(str(status["reconciledAt"]) if status.get("reconciledAt") else None),
             out_of_sync_resources=out_of_sync_resources,
         )
 
@@ -953,11 +951,11 @@ class KubernetesExecutor:
         owners = pod.metadata.owner_references or []
         controller = next((owner for owner in owners if owner.controller), None)
         statuses = pod.status.container_statuses or []
-        terminated = [
-            status.last_state.terminated
-            for status in statuses
-            if status.last_state is not None and status.last_state.terminated is not None
-        ]
+        terminated: list[Any] = []
+        for status in statuses:
+            termination = getattr(getattr(status, "last_state", None), "terminated", None)
+            if termination is not None:
+                terminated.append(termination)
         return PodState(
             namespace=pod.metadata.namespace,
             name=pod.metadata.name,
@@ -967,8 +965,6 @@ class KubernetesExecutor:
             controller_managed=controller is not None,
             controller_kind=controller.kind if controller else None,
             restart_count=sum(status.restart_count or 0 for status in statuses),
-            termination_reasons=tuple(
-                item.reason or "Unknown" for item in terminated
-            ),
+            termination_reasons=tuple(item.reason or "Unknown" for item in terminated),
             exit_codes=tuple(item.exit_code for item in terminated),
         )

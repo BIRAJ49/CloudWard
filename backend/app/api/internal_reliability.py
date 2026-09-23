@@ -5,7 +5,7 @@ from __future__ import annotations
 import hmac
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, ConfigDict
@@ -13,8 +13,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from app.alerts.schemas import NormalizedAlert
 from app.ai.models import AIDiagnosisRecord
+from app.alerts.schemas import NormalizedAlert
 from app.api.dependencies import get_kubernetes_executor, get_opa_client, get_runbook_loader
 from app.audit import record_audit
 from app.config import Settings, get_settings
@@ -53,13 +53,13 @@ from app.observability import (
     TempoTracesProvider,
 )
 from app.policies import OPAClient
-from app.security.quarantine import apply_quarantine, remove_quarantine
 from app.reliability import ReliabilityAlertProcessor, ReliabilityProcessingResult
 from app.reliability.workflow import ALERT_CONDITIONS
 from app.remediation import RollbackCoordinator, RollbackDisposition
 from app.remediation.actions import ActionType
 from app.remediation.gitops import LocalGitOpsImageWriter
 from app.runbooks import RunbookLoader
+from app.security.quarantine import apply_quarantine, remove_quarantine
 from app.tasks import AI_DIAGNOSIS_QUEUE, AI_DIAGNOSIS_TASK
 from app.verification import MultiSignalVerificationEngine, VerificationPlan, persist_verification
 
@@ -84,7 +84,9 @@ class ReconcileResult(BaseModel):
 def _require_worker(authorization: str | None, settings: Settings) -> None:
     expected = f"Bearer {settings.worker_internal_token.get_secret_value()}"
     if authorization is None or not hmac.compare_digest(authorization, expected):
-        raise CloudWardError("WORKER_AUTHENTICATION_FAILED", "Worker authentication failed", status_code=401)
+        raise CloudWardError(
+            "WORKER_AUTHENTICATION_FAILED", "Worker authentication failed", status_code=401
+        )
 
 
 @router.post("/reliability/process-alert", response_model=ReliabilityProcessingResult)
@@ -323,7 +325,9 @@ async def reconcile_execution(
     _require_worker(authorization, settings)
     execution = await session.get(ChaosExecution, execution_id, with_for_update=True)
     if execution is None:
-        raise CloudWardError("EXECUTION_NOT_FOUND", "Scenario execution was not found", status_code=404)
+        raise CloudWardError(
+            "EXECUTION_NOT_FOUND", "Scenario execution was not found", status_code=404
+        )
     if execution.status not in {
         ExperimentStatus.PENDING,
         ExperimentStatus.RUNNING,
@@ -353,7 +357,9 @@ async def reconcile_execution(
         execution.status = ExperimentStatus.TIMED_OUT
         execution.completed_at = now
         execution.cleanup_completed_at = now
-        execution.failure_reason = "expected verified incident lifecycle did not finish before deadline"
+        execution.failure_reason = (
+            "expected verified incident lifecycle did not finish before deadline"
+        )
         execution.details = {**execution.details, "current_step": "TIMED_OUT"}
         await _stream_execution(session, execution)
         await session.commit()
@@ -496,9 +502,7 @@ async def reconcile_execution(
                 )
                 disposition = rollback.decide(
                     action=action_execution.action_type,
-                    risk_score=(
-                        incident.risk_score if incident.risk_score is not None else 100
-                    ),
+                    risk_score=(incident.risk_score if incident.risk_score is not None else 100),
                     rollback_enabled=True,
                     policy_allows_rollback=bool(latest_policy and latest_policy.allowed),
                 )
@@ -528,7 +532,9 @@ async def reconcile_execution(
         execution.details = {**execution.details, "current_step": "FAILED"}
         await _stream_execution(session, execution)
         await session.commit()
-        return ReconcileResult(terminal=True, status=execution.status, detail=execution.failure_reason)
+        return ReconcileResult(
+            terminal=True, status=execution.status, detail=execution.failure_reason
+        )
     await _stream_execution(session, execution)
     await session.commit()
     return ReconcileResult(
@@ -583,8 +589,7 @@ async def _cleanup(
                         select(ActionExecution)
                         .where(
                             ActionExecution.incident_id == incident.id,
-                            ActionExecution.action_type
-                            == ActionType.SCALE_STAGING_DEPLOYMENT,
+                            ActionExecution.action_type == ActionType.SCALE_STAGING_DEPLOYMENT,
                             ActionExecution.rollback_of_execution_id.is_(None),
                         )
                         .order_by(ActionExecution.attempt.desc())
@@ -613,9 +618,7 @@ async def _cleanup(
                             incident.risk_score if incident.risk_score is not None else 100
                         ),
                         rollback_enabled=True,
-                        policy_allows_rollback=bool(
-                            latest_policy and latest_policy.allowed
-                        ),
+                        policy_allows_rollback=bool(latest_policy and latest_policy.allowed),
                     )
                     if disposition != RollbackDisposition.AUTOMATIC:
                         raise CloudWardError(
@@ -669,16 +672,16 @@ async def _reconcile_security_execution(
     if execution.resource_name:
         event_statement = event_statement.where(SecurityEvent.pod == execution.resource_name)
     event = (
-        await session.execute(
-            event_statement.order_by(SecurityEvent.created_at.desc()).limit(1)
-        )
+        await session.execute(event_statement.order_by(SecurityEvent.created_at.desc()).limit(1))
     ).scalar_one_or_none()
     if event is None:
         if now >= execution.cleanup_deadline:
             execution.status = ExperimentStatus.TIMED_OUT
             execution.completed_at = now
             execution.cleanup_completed_at = now
-            execution.failure_reason = "expected normalized Tetragon event did not arrive before deadline"
+            execution.failure_reason = (
+                "expected normalized Tetragon event did not arrive before deadline"
+            )
             execution.details = {**execution.details, "current_step": "TIMED_OUT"}
             await _stream_execution(session, execution)
             await session.commit()
@@ -780,9 +783,8 @@ async def _reconcile_security_execution(
             status=execution.status,
             detail="security incident contained, verified, and cleaned up",
         )
-    if (
-        event.containment_status == ContainmentStatus.VERIFICATION_FAILED
-        or (incident is not None and incident.state.value in {"BLOCKED", "ESCALATED"})
+    if event.containment_status == ContainmentStatus.VERIFICATION_FAILED or (
+        incident is not None and incident.state.value in {"BLOCKED", "ESCALATED"}
     ):
         cleanup = await _remove_security_containment(
             event, session=session, settings=settings, kubernetes=kubernetes, opa=opa
@@ -840,11 +842,15 @@ async def _remove_security_containment(
         ContainmentStatus.AWAITING_APPROVAL,
         ContainmentStatus.REMOVED,
     }:
-        return event.containment_status == ContainmentStatus.REMOVED or event.containment_status in {
-            ContainmentStatus.NOT_PROPOSED,
-            ContainmentStatus.PROPOSED,
-            ContainmentStatus.AWAITING_APPROVAL,
-        }
+        return (
+            event.containment_status == ContainmentStatus.REMOVED
+            or event.containment_status
+            in {
+                ContainmentStatus.NOT_PROPOSED,
+                ContainmentStatus.PROPOSED,
+                ContainmentStatus.AWAITING_APPROVAL,
+            }
+        )
     try:
         record = await remove_quarantine(
             session,
@@ -856,6 +862,4 @@ async def _remove_security_containment(
         )
     except CloudWardError:
         return False
-    return record.status == ContainmentStatus.REMOVED and bool(
-        record.verification.get("success")
-    )
+    return record.status == ContainmentStatus.REMOVED and bool(record.verification.get("success"))

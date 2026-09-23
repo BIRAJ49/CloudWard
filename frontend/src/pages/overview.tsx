@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { IncidentTable } from "../components/incident-table";
+import { Icon } from "../components/icon";
+import { DottedGrid } from "../components/obsidian/dotted-grid";
 import { EmptyState, ErrorNotice, LoadingPanel, Panel } from "../components/panel";
 import { StatusBadge } from "../components/status-badge";
 import { useDocumentTitle } from "../hooks/use-document-title";
@@ -29,25 +31,32 @@ interface HealthItem {
   latencyMs?: number;
 }
 
-const initialState: OverviewState = { incidents: [], clusters: [], services: [], securityEvents: [], recommendations: [], approvals: [], audit: [], partialFailures: [] };
+const initialState: OverviewState = {
+  incidents: [],
+  clusters: [],
+  services: [],
+  securityEvents: [],
+  recommendations: [],
+  approvals: [],
+  audit: [],
+  partialFailures: [],
+};
+
+const workflow = [
+  { label: "Event", detail: "Detected" },
+  { label: "Evidence", detail: "Collected" },
+  { label: "Runbook", detail: "Matched" },
+  { label: "Risk", detail: "Scored" },
+  { label: "OPA", detail: "Decides" },
+  { label: "Approval", detail: "When required" },
+  { label: "Action", detail: "Allowlisted" },
+  { label: "Verify", detail: "Proven" },
+  { label: "Audit", detail: "Recorded" },
+] as const;
 
 function unwrap<T>(value: T[] | { items: T[] }): T[] {
   return Array.isArray(value) ? value : value.items;
 }
-
-const workflow = [
-  { label: "Event", detail: "Incident detected" },
-  { label: "Evidence", detail: "Collect required signals" },
-  { label: "Classify", detail: "Identify incident type" },
-  { label: "Runbook", detail: "Match declarative procedure" },
-  { label: "Diagnose", detail: "Deterministic signal checks" },
-  { label: "Risk", detail: "Deterministic score" },
-  { label: "OPA", detail: "Policy is final authority" },
-  { label: "Approval", detail: "When policy requires it" },
-  { label: "Action", detail: "Registered actions only" },
-  { label: "Verify", detail: "Multi-signal proof" },
-  { label: "Audit", detail: "Append the outcome" },
-] as const;
 
 function dependency(health: HealthResponse | undefined, names: string[]) {
   const checks = health?.dependencies ?? health?.checks ?? {};
@@ -135,37 +144,31 @@ export function OverviewPage() {
   const postgres = dependency(data.health, ["postgres", "postgresql", "database"]);
   const redis = dependency(data.health, ["redis"]);
   const opa = dependency(data.health, ["opa", "policy"]);
-  const localCluster = data.clusters.find((cluster) =>
-    cluster.environment?.toLowerCase() === "local" || cluster.name?.toLowerCase().includes("local"),
+  const localCluster = data.clusters.find((item) =>
+    item.environment?.toLowerCase() === "local" || item.name?.toLowerCase().includes("local"),
   ) ?? data.clusters[0];
   const cluster = localCluster ? normalizedCheck(localCluster.status ?? localCluster.connected) : normalizedCheck(undefined);
 
   const healthItems: HealthItem[] = [
     { name: "API", status: api.label, tone: api.tone, detail: data.health ? "Readiness endpoint" : "No health response" },
-    { name: "PostgreSQL", status: postgres.label, tone: postgres.tone, detail: "Dependency check", latencyMs: postgres.latencyMs },
-    { name: "Redis", status: redis.label, tone: redis.tone, detail: "Dependency check", latencyMs: redis.latencyMs },
-    { name: "OPA", status: opa.label, tone: opa.tone, detail: "Policy dependency", latencyMs: opa.latencyMs },
+    { name: "PostgreSQL", status: postgres.label, tone: postgres.tone, detail: "Control-plane record", latencyMs: postgres.latencyMs },
+    { name: "Redis", status: redis.label, tone: redis.tone, detail: "Queue and event broker", latencyMs: redis.latencyMs },
+    { name: "OPA", status: opa.label, tone: opa.tone, detail: "Policy authority", latencyMs: opa.latencyMs },
     {
-      name: "Local cluster",
+      name: "Cluster",
       status: localCluster ? humanize(localCluster.status ?? "inventoried") : "Unavailable",
       tone: localCluster ? cluster.tone : "neutral",
       detail: localCluster?.name ?? "No cluster returned",
     },
     {
       name: "Open incidents",
-      status: String(activeIncidents.length),
-      tone: activeIncidents.length ? "warn" : "good",
-      detail: `${activeIncidents.length} of ${data.incidents.length} loaded records`,
+      status: data.partialFailures.includes("incidents") ? "Unavailable" : String(activeIncidents.length),
+      tone: activeIncidents.length ? "warn" : data.partialFailures.includes("incidents") ? "neutral" : "good",
+      detail: `${data.incidents.length} loaded records`,
     },
   ];
+
   const awaitingApprovals = data.approvals.filter((item) => ["PENDING", "REQUESTED", "AWAITING_APPROVAL"].includes(String(item.status ?? item.state).toUpperCase())).length;
-  const quarantined = data.securityEvents.filter((item) => ["CONTAINED", "ACTIVE", "VERIFIED"].includes(String(item.containment_status).toUpperCase())).length;
-  const automaticRemediations = data.incidents.filter((item) => String(item.resolution_source).toUpperCase() === "CLOUDWARD_REMEDIATION").length;
-  const severityCounts = data.incidents.reduce<Record<string, number>>((counts, item) => {
-    const severity = String(item.severity ?? "UNKNOWN").toUpperCase();
-    counts[severity] = (counts[severity] ?? 0) + 1;
-    return counts;
-  }, {});
   const savingsValues = data.recommendations.map((item) => {
     const observed = item.estimated_savings?.value;
     return item.estimated_monthly_savings ?? item.savings ?? (typeof observed === "number" ? observed : undefined);
@@ -175,18 +178,44 @@ export function OverviewPage() {
   const pullRequests = data.audit.filter((item) => /PULL_REQUEST|_PR_/.test(String(item.event_type).toUpperCase())).slice(0, 6);
   const unavailable = (name: string) => data.partialFailures.includes(name);
 
+  const heroState = loading
+    ? { label: "Synchronizing control plane", tone: "neutral" as Tone, detail: "Waiting for current API evidence" }
+    : data.partialFailures.length
+      ? { label: "Partial visibility", tone: "warn" as Tone, detail: `${data.partialFailures.length} data source${data.partialFailures.length === 1 ? " is" : "s are"} unavailable` }
+      : activeIncidents.length
+        ? { label: "Operator attention", tone: "warn" as Tone, detail: `${activeIncidents.length} active incident${activeIncidents.length === 1 ? "" : "s"} in the loaded window` }
+        : { label: "No active incidents", tone: "good" as Tone, detail: "All loaded incident records are terminal" };
+
   return (
-    <div className="page">
-      <header className="page-header">
+    <div className="page overview-page">
+      <header className="overview-heading">
         <div>
-          <p className="eyebrow">Local control plane</p>
-          <h1>Overview</h1>
-          <p>Current dependency health, incident workload, and remediation boundaries.</p>
+          <p className="eyebrow">Operations dashboard</p>
+          <h1 id="overview-title">Overview</h1>
+          <p>Live reliability, security, cost, and policy evidence across the control plane.</p>
         </div>
-        <button type="button" className="button button--secondary" onClick={refresh} disabled={loading}>
-          {loading ? "Refreshing…" : "Refresh"}
-        </button>
+        <div className="overview-heading__actions">
+          <Link className="button button--secondary" to="/incident-lab"><Icon name="lab" />Incident lab</Link>
+          <button type="button" className="button button--primary" onClick={refresh} disabled={loading}>
+            <Icon name="refresh" className={loading ? "is-spinning" : undefined} />
+            {loading ? "Refreshing…" : "Refresh data"}
+          </button>
+        </div>
       </header>
+
+      <section className={`operating-state operating-state--${heroState.tone}`} aria-label="Current operating state">
+        <DottedGrid className="operating-state__grid" paused={loading} />
+        <div className="operating-state__icon"><Icon name={heroState.tone === "good" ? "check" : "incidents"} /></div>
+        <div className="operating-state__copy">
+          <span>Current operating state</span>
+          <h2>{heroState.label}</h2>
+          <p>{heroState.detail}. Evidence is live and no missing values are inferred.</p>
+        </div>
+        <div className="operating-state__boundary">
+          <Icon name="shield" />
+          <div><span>Decision authority</span><strong>OPA enforced</strong><small>AI is advisory only</small></div>
+        </div>
+      </section>
 
       {data.partialFailures.length ? (
         <ErrorNotice
@@ -196,36 +225,20 @@ export function OverviewPage() {
         />
       ) : null}
 
-      <section className="status-grid" aria-label="Platform health">
-        {healthItems.map((item) => (
-          <article className="status-card" key={item.name}>
-            <div className="status-card__top">
-              <h2>{item.name}</h2>
-              <span className={`health-dot health-dot--${item.tone}`} aria-hidden="true" />
-            </div>
-            <strong className="status-card__value">{item.status}</strong>
-            <p>{item.detail}{typeof item.latencyMs === "number" ? ` · ${item.latencyMs.toFixed(1)} ms` : ""}</p>
-          </article>
-        ))}
+      <section className="metric-grid" aria-label="Operational summary">
+        <MetricCard label="Active incidents" value={unavailable("incidents") ? "—" : String(activeIncidents.length)} detail={`${data.incidents.length} records loaded`} tone={activeIncidents.length ? "warn" : "good"} icon="incidents" href="/incidents" />
+        <MetricCard label="Pending approvals" value={unavailable("approvals") ? "—" : String(awaitingApprovals)} detail={awaitingApprovals ? "Operator decision required" : "No action required"} tone={awaitingApprovals ? "warn" : "good"} icon="approvals" href="/approvals" />
+        <MetricCard label="Protected services" value={unavailable("service inventory") ? "—" : String(data.services.length)} detail={`${data.clusters.length} managed cluster${data.clusters.length === 1 ? "" : "s"}`} tone="info" icon="reliability" href="/reliability" />
+        <MetricCard label="Estimated savings" value={unavailable("FinOps") || savings === undefined ? "—" : new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(savings)} detail={savings === undefined ? "No bounded estimate" : "Monthly opportunity"} tone="neutral" icon="finops" href="/finops" />
       </section>
 
-      <section className="operations-grid" aria-label="Operational summary">
-        <OperationalStat label="Active incidents" value={unavailable("incidents") ? "Unavailable" : String(activeIncidents.length)} detail={`${data.incidents.length} loaded`} tone={activeIncidents.length ? "warn" : "good"} />
-        <OperationalStat label="Incidents by severity" value={unavailable("incidents") ? "Unavailable" : Object.entries(severityCounts).map(([key, value]) => `${key} ${value}`).join(" · ") || "No incidents"} detail="Loaded records" />
-        <OperationalStat label="Automatic remediations" value={unavailable("incidents") ? "Unavailable" : String(automaticRemediations)} detail="CloudWard resolution source" tone="info" />
-        <OperationalStat label="Awaiting approval" value={unavailable("approvals") ? "Unavailable" : String(awaitingApprovals)} detail="Human decision required" tone={awaitingApprovals ? "warn" : "good"} />
-        <OperationalStat label="Runtime security events" value={unavailable("runtime security") ? "Unavailable" : String(data.securityEvents.length)} detail="Loaded Tetragon records" />
-        <OperationalStat label="Quarantined workloads" value={unavailable("runtime security") ? "Unavailable" : String(quarantined)} detail="Active verified containment" tone={quarantined ? "warn" : "good"} />
-        <OperationalStat label="Estimated savings" value={unavailable("FinOps") || savings === undefined ? "Unavailable" : new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(savings)} detail="Observed local windows only" tone="info" />
-        <OperationalStat label="Recent GitHub PRs" value={unavailable("audit activity") ? "Unavailable" : String(pullRequests.length)} detail="Loaded audit window" />
-      </section>
-
-      <div className="overview-grid">
+      <div className="overview-primary-grid">
         <Panel
+          eyebrow="Response queue"
           title="Active incidents"
-          description={`${activeIncidents.length} unresolved records in the loaded incident set.`}
-          action={<Link className="text-link" to="/incidents">View all incidents</Link>}
-          className="overview-incidents"
+          description="Prioritized by lifecycle state and deterministic risk score."
+          action={<Link className="panel-link" to="/incidents">View all <Icon name="arrow" /></Link>}
+          className="overview-incidents overview-card"
         >
           {loading ? <LoadingPanel label="Loading incidents" /> : activeIncidents.length ? (
             <>
@@ -235,77 +248,100 @@ export function OverviewPage() {
           ) : <EmptyState title="No open incidents" detail="The incidents API returned no unresolved records." />}
         </Panel>
 
-        <Panel title="Inventory" description="Clusters and services returned by the control-plane API." className="inventory-panel">
-          <div className="inventory-section">
-            <div className="section-heading"><h3>Clusters</h3><span>{data.clusters.length} loaded</span></div>
-            {data.clusters.length ? (
-              <ul className="inventory-list">
-                {data.clusters.map((item) => (
-                  <li key={item.id ?? item.name}>
-                    <div><strong>{item.name ?? "Unnamed cluster"}</strong><small>{item.context_name ?? `${humanize(item.environment)} environment`}</small></div>
-                    <StatusBadge label={humanize(item.status ?? "inventoried")} tone={stateTone(item.status)} dot />
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="quiet-copy">No clusters were returned.</p>}
+        <section aria-label="Platform health" className="health-panel">
+          <header className="health-panel__header">
+            <div><p className="eyebrow">Control plane</p><h2>Platform health</h2></div>
+            <StatusBadge label={data.partialFailures.length ? "Partial" : "Operational"} tone={data.partialFailures.length ? "warn" : "good"} dot />
+          </header>
+          <div className="health-list">
+            {healthItems.map((item) => (
+              <article className={`health-row health-row--${item.tone}`} key={item.name}>
+                <span className={`health-dot health-dot--${item.tone}`} aria-hidden="true" />
+                <div><h3>{item.name}</h3><p>{item.detail}</p></div>
+                <strong>{item.status}</strong>
+                {typeof item.latencyMs === "number" ? <code>{item.latencyMs.toFixed(1)} ms</code> : null}
+              </article>
+            ))}
           </div>
-          <div className="inventory-section">
-            <div className="section-heading"><h3>Services</h3><span>{data.services.length} loaded</span></div>
-            {data.services.length ? (
-              <ul className="inventory-list">
-                {data.services.map((service) => (
-                  <li key={service.id}>
-                    <div><strong>{service.name}</strong><small>{service.namespace ?? "Namespace not recorded"} · {service.deployment_name ?? "Deployment not recorded"}</small></div>
-                    {service.criticality ? <span className="metadata-label">{humanize(service.criticality)}</span> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="quiet-copy">No services were returned.</p>}
-          </div>
-        </Panel>
-      </div>
-
-      <div className="activity-grid">
-        <Panel title="Recent deployments" description="Deployment and GitOps events from the audit log."><ActivityList events={deployments} empty="No deployment activity returned." /></Panel>
-        <Panel title="Recent GitHub PRs" description="Pull-request automation events from the audit log."><ActivityList events={pullRequests} empty="No pull-request activity returned." /></Panel>
-        <Panel title="Recent audit activity" description="Newest control-plane records in the loaded window."><ActivityList events={data.audit.slice(0, 6)} empty="No audit activity returned." /></Panel>
+          <button type="button" className="health-panel__action" onClick={refresh} disabled={loading}>Open live health evidence <Icon name="arrow" /></button>
+        </section>
       </div>
 
       <Panel
+        eyebrow="Policy-controlled automation"
         title="Deterministic remediation workflow"
-        description="CloudWard follows this control path. AI can assist diagnosis, but it cannot authorize or execute an action."
-        className="workflow-panel"
+        description="AI may diagnose and summarize. It cannot authorize or execute."
+        className="workflow-panel overview-card"
       >
         <ol className="workflow-list">
           {workflow.map((stage, index) => (
             <li key={stage.label}>
-              <span>{index + 1}</span>
+              <span>{String(index + 1).padStart(2, "0")}</span>
               <div><strong>{stage.label}</strong><small>{stage.detail}</small></div>
             </li>
           ))}
         </ol>
       </Panel>
 
+      <div className="overview-secondary-grid">
+        <Panel eyebrow="Managed scope" title="Inventory" description="Assets returned by the control-plane API." className="inventory-panel overview-card">
+          <div className="inventory-columns">
+            <div className="inventory-section">
+              <div className="section-heading"><h3>Clusters</h3><Link to="/infrastructure">{data.clusters.length} loaded</Link></div>
+              {data.clusters.length ? <ul className="inventory-list">{data.clusters.slice(0, 3).map((item) => <li key={item.id ?? item.name}><div><strong>{item.name ?? "Unnamed cluster"}</strong><small>{item.context_name ?? `${humanize(item.environment)} environment`}</small></div><StatusBadge label={humanize(item.status ?? "inventoried")} tone={stateTone(item.status)} dot /></li>)}</ul> : <p className="quiet-copy">No clusters returned.</p>}
+            </div>
+            <div className="inventory-section">
+              <div className="section-heading"><h3>Services</h3><Link to="/reliability">{data.services.length} loaded</Link></div>
+              {data.services.length ? <ul className="inventory-list">{data.services.slice(0, 3).map((service) => <li key={service.id}><div><strong>{service.name}</strong><small>{service.namespace ?? "Namespace not recorded"}</small></div>{service.criticality ? <span className="metadata-label">{humanize(service.criticality)}</span> : null}</li>)}</ul> : <p className="quiet-copy">No services returned.</p>}
+            </div>
+          </div>
+        </Panel>
+
+        <Panel eyebrow="Recent evidence" title="Control-plane activity" description="Newest durable records from the audit window." action={<Link className="panel-link" to="/audit">Audit log <Icon name="arrow" /></Link>} className="overview-card">
+          <div className="activity-tabs" aria-label="Activity summary">
+            <span><Icon name="deployments" />{deployments.length} deployment events</span>
+            <span><Icon name="audit" />{pullRequests.length} pull-request events</span>
+            <span><Icon name="security" />{data.securityEvents.length} runtime detections</span>
+          </div>
+          <ActivityList events={data.audit.slice(0, 5)} empty="No audit activity returned." />
+        </Panel>
+      </div>
+
       <section className="safety-boundary" aria-labelledby="safety-title">
+        <div className="safety-boundary__icon" aria-hidden="true"><Icon name="shield" /></div>
         <div>
-          <p className="eyebrow">Safety boundary</p>
           <h2 id="safety-title">Automation is constrained before execution</h2>
           <p>OPA evaluates every proposal and fails closed. Automatic remediation is limited to registered, reversible actions against explicitly labelled local or staging demo targets.</p>
         </div>
-        <ul>
-          <li>No arbitrary shell, kubectl, exec, or external HTTP actions</li>
-          <li>Production, high-risk, and irreversible operations are denied or require escalation</li>
-          <li>An incident resolves only after verification evidence is recorded</li>
-        </ul>
+        <div className="safety-boundary__facts">
+          <span><Icon name="check" />Allowlisted actions</span>
+          <span><Icon name="check" />Human approval gates</span>
+          <span><Icon name="check" />Verified outcomes</span>
+        </div>
       </section>
     </div>
   );
 }
 
-function OperationalStat({ label, value, detail, tone = "neutral" }: { label: string; value: string; detail: string; tone?: Tone }) {
-  return <article className={`operation-stat operation-stat--${tone}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>;
+function MetricCard({ label, value, detail, tone, icon, href }: { label: string; value: string; detail: string; tone: Tone; icon: "incidents" | "approvals" | "reliability" | "finops"; href: string }) {
+  return (
+    <Link className={`metric-card metric-card--${tone}`} to={href}>
+      <span className="metric-card__icon"><Icon name={icon} /></span>
+      <span className="metric-card__copy"><small>{label}</small><strong>{value}</strong><span>{detail}</span></span>
+      <Icon name="arrow" className="metric-card__arrow" />
+    </Link>
+  );
 }
 
 function ActivityList({ events, empty }: { events: AuditEvent[]; empty: string }) {
-  return events.length ? <ul className="activity-list">{events.map((event, index) => <li key={event.id ?? index}><div><strong>{humanize(event.event_type)}</strong><small>{event.actor ?? "Control plane"}</small></div><StatusBadge label={humanize(event.result)} tone={stateTone(event.result)} /></li>)}</ul> : <p className="quiet-copy">{empty}</p>;
+  return events.length ? (
+    <ul className="activity-list">
+      {events.map((event, index) => (
+        <li key={event.id ?? index}>
+          <div><strong>{humanize(event.event_type)}</strong><small>{event.actor ?? "Control plane"}</small></div>
+          <StatusBadge label={humanize(event.result)} tone={stateTone(event.result)} />
+        </li>
+      ))}
+    </ul>
+  ) : <p className="quiet-copy">{empty}</p>;
 }

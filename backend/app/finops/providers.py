@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import math
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -56,14 +58,19 @@ class _BoundedJSONClient:
 
     async def get(self, path: str, *, params: dict[str, str]) -> dict[str, Any]:
         owns_client = self._client is None
-        client = self._client or httpx.AsyncClient(timeout=self.timeout, follow_redirects=False)
+        client = self._client or httpx.AsyncClient(
+            timeout=self.timeout, follow_redirects=False, trust_env=False
+        )
         try:
-            async with client.stream(
-                "GET",
-                f"{self.base_url}{path}",
-                params=params,
-                headers={"Accept": "application/json"},
-            ) as response:
+            async with (
+                asyncio.timeout(self.timeout),
+                client.stream(
+                    "GET",
+                    f"{self.base_url}{path}",
+                    params=params,
+                    headers={"Accept": "application/json"},
+                ) as response,
+            ):
                 response.raise_for_status()
                 declared = response.headers.get("content-length")
                 if declared and int(declared) > self.max_response_bytes:
@@ -74,20 +81,20 @@ class _BoundedJSONClient:
                     )
                 body = bytearray()
                 async for chunk in response.aiter_bytes():
-                    body.extend(chunk)
-                    if len(body) > self.max_response_bytes:
+                    if len(body) + len(chunk) > self.max_response_bytes:
                         raise CloudWardError(
                             "FINOPS_PROVIDER_RESPONSE_TOO_LARGE",
                             f"{self.provider} response exceeded the configured bound",
                             status_code=502,
                         )
-            payload = httpx.Response(200, content=bytes(body)).json()
+                    body.extend(chunk)
+            payload = json.loads(body)
             if not isinstance(payload, dict):
                 raise ValueError("root JSON value is not an object")
             return payload
         except CloudWardError:
             raise
-        except (httpx.HTTPError, UnicodeError, ValueError) as exc:
+        except (httpx.HTTPError, UnicodeError, ValueError, TimeoutError) as exc:
             raise CloudWardError(
                 "FINOPS_PROVIDER_UNAVAILABLE",
                 f"{self.provider} did not return a valid bounded response",
@@ -175,11 +182,7 @@ class OpenCostClient:
                 "OpenCost returned no allocation data for the requested window",
                 status_code=409,
             )
-        return {
-            str(name): value
-            for name, value in data[-1].items()
-            if isinstance(value, dict)
-        }
+        return {str(name): value for name, value in data[-1].items() if isinstance(value, dict)}
 
     def _find_allocation(
         self, payload: dict[str, Any], namespace: str, deployment: str
@@ -218,6 +221,38 @@ class PrometheusFinOpsClient:
         )
         self.max_samples = max_samples
 
+    async def _collect_metrics(
+        self,
+        queries: dict[str, str],
+        start: datetime,
+        end: datetime,
+        step_seconds: int,
+        *,
+        optional: frozenset[str] = frozenset(),
+    ) -> tuple[UsageSeries, UsageSeries, dict[str, float | None]]:
+        # The fixed catalogs contain at most eight independent requests. Await all
+        # of them before returning or raising, so no provider tasks outlive this call.
+        ranges = [
+            asyncio.create_task(self.range_query(queries[name], start, end, step_seconds))
+            for name in ("cpu_usage", "memory_usage")
+        ]
+        scalars = {
+            name: asyncio.create_task(
+                self.instant_scalar(query, end, required=name not in optional)
+            )
+            for name, query in queries.items()
+            if name not in {"cpu_usage", "memory_usage"}
+        }
+        results = await asyncio.gather(*ranges, *scalars.values(), return_exceptions=True)
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+        return (
+            ranges[0].result(),
+            ranges[1].result(),
+            {name: task.result() for name, task in scalars.items()},
+        )
+
     async def collect_workload(
         self,
         *,
@@ -241,24 +276,20 @@ class PrometheusFinOpsClient:
             "memory_limits": f'max(sum by (pod) (kube_pod_container_resource_limits{{{matcher},resource="memory",unit="byte"}}))',
             "replicas": f'kube_deployment_spec_replicas{{namespace="{namespace}",deployment="{deployment}"}}',
         }
-        cpu_usage = await self.range_query(queries["cpu_usage"], start, end, step_seconds)
-        memory_usage = await self.range_query(queries["memory_usage"], start, end, step_seconds)
-        cpu_request = await self.instant_scalar(queries["cpu_requests"], end)
-        memory_request = await self.instant_scalar(queries["memory_requests"], end)
-        cpu_limit = await self.instant_scalar(queries["cpu_limits"], end, required=False)
-        memory_limit = await self.instant_scalar(queries["memory_limits"], end, required=False)
-        replicas = await self.instant_scalar(queries["replicas"], end)
+        cpu_usage, memory_usage, values = await self._collect_metrics(
+            queries, start, end, step_seconds, optional=frozenset({"cpu_limits", "memory_limits"})
+        )
         observed_seconds = self._overlap_seconds(cpu_usage, memory_usage)
         return WorkloadObservation(
             service=deployment,
             environment=environment,
             namespace=namespace,
             deployment=deployment,
-            replicas=max(1, round(replicas or 0)),
-            cpu_request_cores=cpu_request or 0,
-            cpu_limit_cores=cpu_limit,
-            memory_request_bytes=memory_request or 0,
-            memory_limit_bytes=memory_limit,
+            replicas=max(1, round(values["replicas"] or 0)),
+            cpu_request_cores=values["cpu_requests"] or 0,
+            cpu_limit_cores=values["cpu_limits"],
+            memory_request_bytes=values["memory_requests"] or 0,
+            memory_limit_bytes=values["memory_limits"],
             cpu_usage_cores=cpu_usage,
             memory_usage_bytes=memory_usage,
             allocation=allocation,
@@ -290,16 +321,12 @@ class PrometheusFinOpsClient:
             "allocatable_memory": 'sum(kube_node_status_allocatable{resource="memory",unit="byte"})',
             "requested_cpu": 'sum(kube_pod_container_resource_requests{resource="cpu",unit="core"})',
             "requested_memory": 'sum(kube_pod_container_resource_requests{resource="memory",unit="byte"})',
-            "node_count": 'count(kube_node_info)',
+            "node_count": "count(kube_node_info)",
             "pod_count": 'count(kube_pod_info{created_by_kind!="Job"})',
         }
-        cpu_usage = await self.range_query(queries["cpu_usage"], start, end, step_seconds)
-        memory_usage = await self.range_query(queries["memory_usage"], start, end, step_seconds)
-        values = {
-            name: await self.instant_scalar(query, end)
-            for name, query in queries.items()
-            if name not in {"cpu_usage", "memory_usage"}
-        }
+        cpu_usage, memory_usage, values = await self._collect_metrics(
+            queries, start, end, step_seconds
+        )
         return NodeObservation(
             environment=environment,
             node_count=max(1, round(values["node_count"] or 0)),
@@ -412,15 +439,12 @@ class PrometheusFinOpsClient:
 
     @staticmethod
     def _overlap_seconds(first: UsageSeries, second: UsageSeries) -> int:
-        if not all(
-            [
-                first.first_timestamp,
-                first.last_timestamp,
-                second.first_timestamp,
-                second.last_timestamp,
-            ]
-        ):
+        first_start = first.first_timestamp
+        first_end = first.last_timestamp
+        second_start = second.first_timestamp
+        second_end = second.last_timestamp
+        if first_start is None or first_end is None or second_start is None or second_end is None:
             return 0
-        start = max(first.first_timestamp, second.first_timestamp)  # type: ignore[arg-type]
-        end = min(first.last_timestamp, second.last_timestamp)  # type: ignore[arg-type]
+        start = max(first_start, second_start)
+        end = min(first_end, second_end)
         return max(0, round((end - start).total_seconds()))

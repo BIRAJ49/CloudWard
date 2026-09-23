@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import re
+from collections.abc import Mapping, Sequence
 from pathlib import PurePosixPath
 
 from app.errors import CloudWardError
@@ -38,7 +39,7 @@ class GitHubAutomationPolicy:
         *,
         read_repositories: set[str] | frozenset[str],
         issue_repositories: set[str] | frozenset[str],
-        write_paths: dict[str, tuple[str, ...] | list[str]],
+        write_paths: Mapping[str, Sequence[str]],
     ) -> None:
         self.read_repositories = frozenset(normalize_repository(item) for item in read_repositories)
         self.issue_repositories = frozenset(

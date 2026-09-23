@@ -11,9 +11,13 @@ from app.rbac import Permission
 
 class ActionType(StrEnum):
     DELETE_UNHEALTHY_POD = "DELETE_UNHEALTHY_POD"
+    RESTART_POD = "RESTART_POD"
     SCALE_STAGING_DEPLOYMENT = "SCALE_STAGING_DEPLOYMENT"
+    SCALE_WORKLOAD = "SCALE_WORKLOAD"
     REVERT_IMAGE = "REVERT_IMAGE"
+    ROLLBACK_DEPLOYMENT = "ROLLBACK_DEPLOYMENT"
     APPLY_QUARANTINE = "APPLY_QUARANTINE"
+    QUARANTINE_WORKLOAD = "QUARANTINE_WORKLOAD"
     REMOVE_QUARANTINE = "REMOVE_QUARANTINE"
     CREATE_GITOPS_PR = "CREATE_GITOPS_PR"
     CREATE_TERRAFORM_PR = "CREATE_TERRAFORM_PR"
@@ -53,11 +57,31 @@ ACTION_REGISTRY: dict[ActionType, ActionMetadata] = {
         rollback_capable=False,
         implemented=True,
     ),
+    ActionType.RESTART_POD: ActionMetadata(
+        ActionType.RESTART_POD,
+        reversible=True,
+        persistent=False,
+        allowed_environments=frozenset({"local", "staging", "production"}),
+        required_permission=Permission.DEMO_TRIGGER,
+        verification_strategy=VerificationStrategy.KUBERNETES_AND_HTTP,
+        rollback_capable=False,
+        implemented=True,
+    ),
     ActionType.SCALE_STAGING_DEPLOYMENT: ActionMetadata(
         ActionType.SCALE_STAGING_DEPLOYMENT,
         reversible=True,
         persistent=False,
         allowed_environments=frozenset({"local", "staging"}),
+        required_permission=Permission.ACTION_APPROVE_STANDARD,
+        verification_strategy=VerificationStrategy.DEPLOYMENT_ROLLOUT,
+        rollback_capable=True,
+        implemented=True,
+    ),
+    ActionType.SCALE_WORKLOAD: ActionMetadata(
+        ActionType.SCALE_WORKLOAD,
+        reversible=True,
+        persistent=False,
+        allowed_environments=frozenset({"local", "staging", "production"}),
         required_permission=Permission.ACTION_APPROVE_STANDARD,
         verification_strategy=VerificationStrategy.DEPLOYMENT_ROLLOUT,
         rollback_capable=True,
@@ -73,8 +97,28 @@ ACTION_REGISTRY: dict[ActionType, ActionMetadata] = {
         rollback_capable=True,
         implemented=True,
     ),
+    ActionType.ROLLBACK_DEPLOYMENT: ActionMetadata(
+        ActionType.ROLLBACK_DEPLOYMENT,
+        reversible=True,
+        persistent=True,
+        allowed_environments=frozenset({"local", "staging", "production"}),
+        required_permission=Permission.ACTION_APPROVE_HIGHER_RISK,
+        verification_strategy=VerificationStrategy.DEPLOYMENT_ROLLOUT,
+        rollback_capable=True,
+        implemented=True,
+    ),
     ActionType.APPLY_QUARANTINE: ActionMetadata(
         ActionType.APPLY_QUARANTINE,
+        reversible=True,
+        persistent=False,
+        allowed_environments=frozenset({"local", "staging", "production"}),
+        required_permission=Permission.ACTION_APPROVE_HIGHER_RISK,
+        verification_strategy=VerificationStrategy.POLICY_STATE,
+        rollback_capable=True,
+        implemented=True,
+    ),
+    ActionType.QUARANTINE_WORKLOAD: ActionMetadata(
+        ActionType.QUARANTINE_WORKLOAD,
         reversible=True,
         persistent=False,
         allowed_environments=frozenset({"local", "staging", "production"}),

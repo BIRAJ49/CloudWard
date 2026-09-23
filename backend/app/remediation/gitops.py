@@ -156,7 +156,10 @@ class LocalGitOpsImageWriter:
                         "STALE_GITOPS_TARGET",
                         "The current image tag is outside the recorded R1 transition",
                         status_code=409,
-                        details={"expected_tags": sorted(expected_tags), "actual_tag": previous_tag},
+                        details={
+                            "expected_tags": sorted(expected_tags),
+                            "actual_tag": previous_tag,
+                        },
                     )
                 if previous_tag == target_tag:
                     return GitOpsImageWriteResult(
@@ -183,11 +186,11 @@ class LocalGitOpsImageWriter:
                     cwd=worktree,
                 )
                 revision = (await self._git("rev-parse", "HEAD", cwd=worktree)).strip()
-                await self._git(
-                    "push", "origin", f"HEAD:refs/heads/{LOCAL_BRANCH}", cwd=worktree
-                )
+                await self._git("push", "origin", f"HEAD:refs/heads/{LOCAL_BRANCH}", cwd=worktree)
                 remote = (
-                    await self._git("ls-remote", "origin", f"refs/heads/{LOCAL_BRANCH}", cwd=worktree)
+                    await self._git(
+                        "ls-remote", "origin", f"refs/heads/{LOCAL_BRANCH}", cwd=worktree
+                    )
                 ).split()
                 if not remote or remote[0] != revision:
                     raise CloudWardError(
@@ -216,7 +219,11 @@ class LocalGitOpsImageWriter:
                 "The fixed CloudWard values document has an invalid shape",
                 status_code=409,
             ) from exc
-        if not isinstance(document, dict) or not isinstance(image, dict) or not isinstance(tag, str):
+        if (
+            not isinstance(document, dict)
+            or not isinstance(image, dict)
+            or not isinstance(tag, str)
+        ):
             raise CloudWardError(
                 "INVALID_GITOPS_VALUES",
                 "The fixed CloudWard image tag is invalid",

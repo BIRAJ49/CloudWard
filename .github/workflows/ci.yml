@@ -15,7 +15,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.12"
-  NODE_VERSION: "22.14.0"
+  NODE_VERSION: "24.19.0"
   KYVERNO_VERSION: "v1.18.2"
 
 jobs:
@@ -23,6 +23,20 @@ jobs:
     name: Python lint, types, and tests
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_USER: cloudward_ci
+          POSTGRES_PASSWORD: cloudward_ci
+          POSTGRES_DB: cloudward_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cloudward_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4.2.2
       - uses: actions/setup-python@v5.6.0
@@ -45,6 +59,15 @@ jobs:
           uv sync --frozen --all-groups
           uv run ruff check .
           uv run pytest -m "not integration"
+      - name: PostgreSQL migration and schema consistency gate
+        working-directory: backend
+        env:
+          APP_ENV: test
+          DEBUG: "false"
+          DATABASE_URL: postgresql+asyncpg://cloudward_ci:cloudward_ci@127.0.0.1:5432/cloudward_ci
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
       - name: Demo service quality gate
         working-directory: demo-services/api
         run: |
@@ -108,6 +131,14 @@ jobs:
           TEST_DIGEST: sha256:1111111111111111111111111111111111111111111111111111111111111111
         run: |
           helm lint helm/cloudward-demo --strict
+          helm lint helm/cloudward-agent --strict
+          helm template agent helm/cloudward-agent --namespace cloudward-system \
+            --set enabled=true \
+            --set-string clusterId=11111111-1111-4111-8111-111111111111 \
+            --set-string controlPlaneUrl=https://cloudward.example \
+            --set-string image.digest="$TEST_DIGEST" \
+            --set-string 'controlPlaneCIDRs[0]=198.51.100.10/32' \
+            --set-string 'kubernetesApiCIDRs[0]=10.0.0.10/32' >/dev/null
           helm lint helm/cloudward-demo --strict \
             --values helm/cloudward-demo/values-local.yaml
           helm lint helm/cloudward-demo --strict \

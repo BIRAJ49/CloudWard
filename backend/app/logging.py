@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.config import Settings
+from app.security.redaction import redact_untrusted
 
 request_id_context: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "request_id", default=None
@@ -18,38 +19,10 @@ correlation_id_context: contextvars.ContextVar[str | None] = contextvars.Context
     "correlation_id", default=None
 )
 
-SENSITIVE_KEYS = frozenset(
-    {
-        "authorization",
-        "cookie",
-        "password",
-        "secret",
-        "token",
-        "access_token",
-        "refresh_token",
-        "client_secret",
-        "session",
-        "api_key",
-    }
-)
-
-
-def _is_sensitive(key: str) -> bool:
-    normalized = key.lower().replace("-", "_")
-    return any(sensitive in normalized for sensitive in SENSITIVE_KEYS)
-
 
 def redact(value: Any) -> Any:
-    """Recursively redact values associated with secret-like keys."""
-
-    if isinstance(value, Mapping):
-        return {
-            str(key): "[REDACTED]" if _is_sensitive(str(key)) else redact(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, (list, tuple, set, frozenset)):
-        return [redact(item) for item in value]
-    return value
+    """Redact secret keys and embedded credentials with bounded recursion."""
+    return redact_untrusted(value)
 
 
 class JsonFormatter(logging.Formatter):

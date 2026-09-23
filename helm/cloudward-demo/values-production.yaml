@@ -20,8 +20,35 @@ podLabels:
 demoTarget:
   enabled: false
 
+demoControlAuth:
+  required: false
+  existingSecret: ""
+  key: token
+
+publicRoute:
+  enabled: false
+  gatewayName: cloudward-public
+  gatewayNamespace: cloudward-ingress
+  sectionName: http
+  hostnames: []
+  paths:
+    - /
+    - /health/live
+    - /health/ready
+    - /metadata
+    - /demo/work
+
 telemetry:
   environment: production
+
+nodeSelector:
+  cloudward.io/capacity-class: critical
+
+tolerations:
+  - key: cloudward.io/capacity-class
+    operator: Equal
+    value: critical
+    effect: NoSchedule
 
 resources:
   requests:

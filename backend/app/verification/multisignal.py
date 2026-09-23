@@ -164,7 +164,9 @@ class MultiSignalVerificationEngine:
                 before=before_values.get(SignalType.ERROR_RATE.value),
                 after=error_rate,
                 threshold=plan.error_rate_threshold,
-                detail=None if error_rate is not None else "Prometheus returned no error-rate sample",
+                detail=None
+                if error_rate is not None
+                else "Prometheus returned no error-rate sample",
             )
         )
         checks.append(

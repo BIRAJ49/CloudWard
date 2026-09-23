@@ -14,11 +14,8 @@ from pydantic import BaseModel, SecretStr, ValidationError
 from app.ai.context import SYSTEM_PROMPT, IncidentContext, render_diagnosis_prompt
 from app.ai.provider import LLMProvider, LLMProviderError
 from app.ai.schemas import (
-    ActionSuggestion,
     AIOperation,
-    ChangeCorrelation,
     DiagnosisProposal,
-    EvidenceSummary,
     ProviderResult,
     TokenUsage,
 )
@@ -54,30 +51,6 @@ class OpenRouterProvider(LLMProvider):
             context=context,
             model=model,
             schema=DiagnosisProposal,
-        )
-
-    async def summarize_evidence(self, context: IncidentContext, *, model: str) -> ProviderResult:
-        return await self._structured_completion(
-            operation=AIOperation.SUMMARIZE_EVIDENCE,
-            context=context,
-            model=model,
-            schema=EvidenceSummary,
-        )
-
-    async def correlate_change(self, context: IncidentContext, *, model: str) -> ProviderResult:
-        return await self._structured_completion(
-            operation=AIOperation.CORRELATE_CHANGE,
-            context=context,
-            model=model,
-            schema=ChangeCorrelation,
-        )
-
-    async def suggest_actions(self, context: IncidentContext, *, model: str) -> ProviderResult:
-        return await self._structured_completion(
-            operation=AIOperation.SUGGEST_ACTIONS,
-            context=context,
-            model=model,
-            schema=ActionSuggestion,
         )
 
     async def _structured_completion(
@@ -139,7 +112,8 @@ class OpenRouterProvider(LLMProvider):
                 "AI_OUTPUT_INVALID", "Provider returned invalid structured output"
             ) from exc
 
-        usage_raw = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+        usage_payload = body.get("usage")
+        usage_raw: dict[str, Any] = usage_payload if isinstance(usage_payload, dict) else {}
         usage = TokenUsage(
             prompt_tokens=_nonnegative_int(usage_raw.get("prompt_tokens")),
             completion_tokens=_nonnegative_int(usage_raw.get("completion_tokens")),
@@ -175,10 +149,12 @@ class OpenRouterProvider(LLMProvider):
                         },
                         json=payload,
                     )
-                    if response.status_code in {408, 409, 429} or response.status_code >= 500:
-                        if attempt < self._max_retries:
-                            await asyncio.sleep(min(0.1 * (2**attempt), 0.5))
-                            continue
+                    retryable_status = (
+                        response.status_code in {408, 409, 429} or response.status_code >= 500
+                    )
+                    if retryable_status and attempt < self._max_retries:
+                        await asyncio.sleep(min(0.1 * (2**attempt), 0.5))
+                        continue
                     response.raise_for_status()
                     return response
                 except httpx.TimeoutException as exc:

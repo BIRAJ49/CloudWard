@@ -34,10 +34,12 @@ def upgrade() -> None:
         ),
     )
     op.add_column(
-        "security_events", sa.Column("namespace", sa.String(253), server_default="unknown", nullable=False)
+        "security_events",
+        sa.Column("namespace", sa.String(253), server_default="unknown", nullable=False),
     )
     op.add_column(
-        "security_events", sa.Column("pod", sa.String(253), server_default="unknown", nullable=False)
+        "security_events",
+        sa.Column("pod", sa.String(253), server_default="unknown", nullable=False),
     )
     op.add_column("security_events", sa.Column("workload", sa.String(253), nullable=True))
     op.add_column(
@@ -45,7 +47,8 @@ def upgrade() -> None:
         sa.Column("container_name", sa.String(253), server_default="unknown", nullable=False),
     )
     op.add_column(
-        "security_events", sa.Column("policy", sa.String(253), server_default="legacy", nullable=False)
+        "security_events",
+        sa.Column("policy", sa.String(253), server_default="legacy", nullable=False),
     )
     op.add_column(
         "security_events",
@@ -64,7 +67,8 @@ def upgrade() -> None:
         ),
     )
     op.add_column(
-        "security_events", sa.Column("dedup_count", sa.Integer(), server_default="1", nullable=False)
+        "security_events",
+        sa.Column("dedup_count", sa.Integer(), server_default="1", nullable=False),
     )
     op.add_column("security_events", sa.Column("risk_score", sa.Integer(), nullable=True))
     op.add_column("security_events", sa.Column("policy_decision", sa.String(32), nullable=True))
@@ -162,9 +166,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["incident_id"], ["incidents.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(
-            ["security_event_id"], ["security_events.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["security_event_id"], ["security_events.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("policy_name"),
     )
@@ -188,9 +190,7 @@ def downgrade() -> None:
     op.drop_table("quarantine_records")
     op.drop_index("ix_security_events_occurred_at", table_name="security_events")
     op.drop_index("ix_security_events_incident_id", table_name="security_events")
-    op.drop_constraint(
-        "uq_security_events_source_fingerprint", "security_events", type_="unique"
-    )
+    op.drop_constraint("uq_security_events_source_fingerprint", "security_events", type_="unique")
     op.drop_constraint(
         "fk_security_events_incident_id_incidents", "security_events", type_="foreignkey"
     )

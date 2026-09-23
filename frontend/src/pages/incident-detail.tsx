@@ -158,28 +158,26 @@ export function IncidentDetailPage() {
     verificationAudit?.metadata,
   );
   const alert = pickRecord(
-    incident.alerts?.at(-1),
-    incident.normalized_alert,
-    incident.alert,
-    incident.trigger,
+    incident?.alerts?.at(-1),
+    incident?.normalized_alert,
+    incident?.alert,
+    incident?.trigger,
     [...evidence].reverse().find((item) => (item.evidence_type ?? item.type)?.toLowerCase().includes("alert"))?.payload,
   );
   const before = pickRecord(
-    incident.verifications?.at(-1)?.before_values,
+    incident?.verifications?.at(-1)?.before_values,
     verification?.before,
     verification?.before_snapshot,
-    incident.before_snapshot,
+    incident?.before_snapshot,
     [...evidence].reverse().find((item) => String(item.phase ?? "").toLowerCase() === "before")?.payload,
   );
   const after = pickRecord(
-    incident.verifications?.at(-1)?.after_values,
+    incident?.verifications?.at(-1)?.after_values,
     verification?.after,
     verification?.after_snapshot,
-    incident.after_snapshot,
+    incident?.after_snapshot,
     [...evidence].reverse().find((item) => String(item.phase ?? "").toLowerCase() === "after")?.payload,
   );
-  const diagnosisRootCause = data.diagnosis?.likely_root_cause ?? data.diagnosis?.suspected_root_cause ?? data.diagnosis?.root_cause_summary ?? data.diagnosis?.summary;
-
   if (loading && !incident) return <div className="page"><LoadingPanel label="Loading incident" /></div>;
 
   if (error || !incident) {
@@ -219,8 +217,6 @@ export function IncidentDetailPage() {
         <div><dt>Created</dt><dd>{formatDate(incident.created_at)}</dd></div>
         <div><dt>Updated</dt><dd>{formatDate(incident.updated_at)}</dd></div>
         <div><dt>Resolution source</dt><dd>{humanize(incident.resolution_source ?? "Pending")}</dd></div>
-        <div><dt>Root-cause summary</dt><dd>{diagnosisRootCause ?? "Not diagnosed"}</dd></div>
-        <div><dt>Diagnosis confidence</dt><dd>{displayValue(data.diagnosis?.confidence)}</dd></div>
       </dl>
 
       {isTerminal ? (

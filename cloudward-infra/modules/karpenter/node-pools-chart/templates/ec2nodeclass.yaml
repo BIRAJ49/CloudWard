@@ -1,0 +1,35 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: cloudward
+  labels:
+    app.kubernetes.io/part-of: cloudward
+spec:
+  role: {{ .Values.nodeRoleName | quote }}
+  amiSelectorTerms:
+    - alias: al2023@latest
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.clusterName | quote }}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.clusterName | quote }}
+  metadataOptions:
+    httpEndpoint: enabled
+    httpProtocolIPv6: disabled
+    httpPutResponseHopLimit: 1
+    httpTokens: required
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: {{ printf "%dGi" (.Values.nodeVolumeSizeGi | int) | quote }}
+        volumeType: gp3
+        iops: 3000
+        throughput: 125
+        encrypted: true
+        deleteOnTermination: true
+  tags:
+    Project: CloudWard
+    ManagedBy: Karpenter
+    eks:eks-cluster-name: {{ .Values.clusterName | quote }}
+    kubernetes.io/cluster/{{ .Values.clusterName }}: owned

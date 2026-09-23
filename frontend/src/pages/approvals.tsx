@@ -21,7 +21,11 @@ export function ApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [refreshKey, setRefreshKey] = useState(0);
-  const refresh = useCallback(() => setRefreshKey((value) => value + 1), []);
+  const refresh = useCallback(() => {
+    setLoading(true);
+    setError(undefined);
+    setRefreshKey((value) => value + 1);
+  }, []);
 
   useControlPlaneEvents(useCallback((event) => {
     const kind = String(event.type ?? event.event_type ?? "").toLowerCase();
@@ -30,7 +34,6 @@ export function ApprovalsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
     Promise.all([cloudWardApi.approvals(controller.signal), cloudWardApi.currentUser(controller.signal)])
       .then(([value, user]) => { setApprovals(items(value)); setPrincipal(user); setError(undefined); })
       .catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Unable to load approvals"); })
@@ -55,7 +58,7 @@ export function ApprovalsPage() {
 
   const canDecide = principal?.role === "Operator" || principal?.role === "Admin";
 
-  return <div className="page">
+  return <div className="page approvals-page">
     <header className="page-header"><div><p className="eyebrow">Human control point</p><h1>Approvals</h1><p>Review actions that policy has held for an explicit operator decision. Approval does not bypass stale-action or execution safeguards.</p></div><button type="button" className="button button--secondary" onClick={refresh} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button></header>
     {!canDecide && principal ? <ErrorNotice title="Read-only approval queue" message="Viewer sessions can inspect decisions but cannot approve or reject actions." /> : null}
     {error ? <ErrorNotice message={error} retry={refresh} /> : null}

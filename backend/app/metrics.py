@@ -63,7 +63,13 @@ class APIMetricsMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        method = scope.get("method", "UNKNOWN")
+        raw_method = scope.get("method", "UNKNOWN")
+        method = (
+            raw_method
+            if raw_method
+            in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "CONNECT", "TRACE"}
+            else "OTHER"
+        )
         started = time.monotonic()
         status = 500
 

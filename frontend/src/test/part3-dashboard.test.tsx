@@ -89,7 +89,7 @@ describe("Part 3 operations dashboard", () => {
   });
 
   it("submits an explicit operator approval comment", async () => {
-    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
       const path = typeof input === "string" ? input : input instanceof URL ? input.pathname : new URL(input.url).pathname;
       if (path === "/api/v1/auth/me") return response({ user_id: "operator-1", login: "operator", role: "Operator" });
       if (path === "/api/v1/approvals") return response([{ id: "approval-1", action_type: "REVERT_IMAGE", status: "PENDING" }]);

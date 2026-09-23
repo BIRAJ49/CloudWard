@@ -20,7 +20,6 @@ from app.ai.schemas import (
 from app.api.dependencies import get_opa_client, get_runbook_loader
 from app.auth.schemas import Principal
 from app.config import Settings, get_settings
-from app.db.models import Incident
 from app.db.session import get_session
 from app.errors import CloudWardError
 from app.incidents.service import get_incident
@@ -95,9 +94,7 @@ async def evaluate_diagnosis_action(
         proposal_id=result.proposal.id,
         action=result.proposal.action_type,
         risk_score=result.proposal.risk_score,
-        risk_classification=str(
-            result.proposal.risk_calculation.get("classification", "UNKNOWN")
-        ),
+        risk_classification=str(result.proposal.risk_calculation.get("classification", "UNKNOWN")),
         policy_allowed=result.decision.allowed,
         requires_approval=result.decision.requires_approval,
         policy_reason=result.decision.reason,

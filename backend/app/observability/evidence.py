@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -11,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import EvidencePhase, EvidenceSnapshot
 from app.evidence.types import EvidenceType
-from app.observability.providers import LogsProvider, MetricsProvider, TelemetryWindow, TracesProvider
+from app.observability.providers import (
+    LogsProvider,
+    MetricsProvider,
+    TelemetryWindow,
+    TracesProvider,
+)
 
 SAFE_LABEL_VALUE = re.compile(r"^[A-Za-z0-9_.:/-]{1,253}$")
 
@@ -71,23 +77,39 @@ class IncidentEvidenceService:
         metric_queries = {
             "http_error_rate": (
                 "sum(rate(cloudward_demo_http_requests_total{"
+                f'namespace="{target.namespace}",'
                 f'service="{target.service}",status_code=~"5.."}}[2m])) '
                 "/ clamp_min(sum(rate(cloudward_demo_http_requests_total{"
+                f'namespace="{target.namespace}",'
                 f'service="{target.service}"}}[2m])), 0.001)'
             ),
             "p95_latency": (
                 "histogram_quantile(0.95, sum by (le) "
                 "(rate(cloudward_demo_http_request_duration_seconds_bucket{"
+                f'namespace="{target.namespace}",'
                 f'service="{target.service}"}}[2m])))'
             ),
             "restart_count": (
-                "sum(kube_pod_container_status_restarts_total{"
-                f'namespace="{target.namespace}"}})'
+                f'sum(kube_pod_container_status_restarts_total{{namespace="{target.namespace}"}})'
             ),
         }
+        # Fetch independent providers concurrently; never share the database session
+        # between tasks. Persist only after every bounded query has succeeded.
+        log_query = (
+            f'{{k8s_namespace_name="{target.namespace}"}} | json | service="{target.service}"'
+        )
+        results = await asyncio.gather(
+            *(self.metrics.query_range(query, window) for query in metric_queries.values()),
+            self.logs.query_range(log_query, window),
+            self.traces.search(target.service, window, namespace=target.namespace),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+        telemetry = [result for result in results if not isinstance(result, BaseException)]
         snapshots: list[EvidenceSnapshot] = []
-        for name, query in metric_queries.items():
-            result = await self.metrics.query_range(query, window)
+        for (name, query), result in zip(metric_queries.items(), telemetry[:3], strict=True):
             snapshots.append(
                 self._snapshot(
                     incident_id,
@@ -101,13 +123,7 @@ class IncidentEvidenceService:
                     {"metric": name, "samples": result.samples, "truncated": result.truncated},
                 )
             )
-        # Kubernetes metadata is the indexed Loki selector. `service` and trace IDs
-        # remain JSON fields parsed at query time, avoiding high-cardinality labels.
-        log_query = (
-            f'{{k8s_namespace_name="{target.namespace}"}} '
-            f'| json | service="{target.service}"'
-        )
-        logs = await self.logs.query_range(log_query, window)
+        logs = telemetry[3]
         snapshots.append(
             self._snapshot(
                 incident_id,
@@ -121,7 +137,7 @@ class IncidentEvidenceService:
                 {"samples": logs.samples, "truncated": logs.truncated},
             )
         )
-        traces = await self.traces.search(target.service, window)
+        traces = telemetry[4]
         snapshots.append(
             self._snapshot(
                 incident_id,

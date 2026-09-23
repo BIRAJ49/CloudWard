@@ -23,8 +23,8 @@ from app.db.models import (
     RunbookExecution,
 )
 from app.errors import CloudWardError
-from app.evidence.types import EvidenceType
 from app.events import append_stream_event
+from app.evidence.types import EvidenceType
 from app.incidents.service import change_incident_state
 from app.incidents.state_machine import IncidentState
 from app.kubernetes import KubernetesExecutor
@@ -108,7 +108,9 @@ class ReliabilityAlertProcessor:
         label_selector = "cloudward.io/demo-target=true"
         pods = await self.kubernetes.get_pods(namespace, label_selector)
         if not pods:
-            raise CloudWardError("RELIABILITY_TARGET_UNAVAILABLE", "No demo target pods were found", status_code=409)
+            raise CloudWardError(
+                "RELIABILITY_TARGET_UNAVAILABLE", "No demo target pods were found", status_code=409
+            )
         deployment = await self.kubernetes.get_deployment(namespace, deployment_name)
         events = await self.kubernetes.get_events(namespace, deployment_name)
         self.session.add_all(
@@ -318,7 +320,11 @@ class ReliabilityAlertProcessor:
             metadata={"reason": policy.reason, "requires_approval": policy.requires_approval},
         )
         if not policy.allowed:
-            target_state = IncidentState.AWAITING_APPROVAL if policy.requires_approval else IncidentState.BLOCKED
+            target_state = (
+                IncidentState.AWAITING_APPROVAL
+                if policy.requires_approval
+                else IncidentState.BLOCKED
+            )
             await change_incident_state(
                 self.session,
                 incident,
@@ -327,7 +333,9 @@ class ReliabilityAlertProcessor:
                 actor_type=ActorType.SERVICE,
                 details={"policy_reason": policy.reason},
             )
-            proposal.status = RecordStatus.PENDING if policy.requires_approval else RecordStatus.REJECTED
+            proposal.status = (
+                RecordStatus.PENDING if policy.requires_approval else RecordStatus.REJECTED
+            )
             return self._result(incident, action, policy.reason)
 
         if action == ActionType.REVERT_IMAGE and not self.settings.local_gitops_write_enabled:
@@ -363,8 +371,10 @@ class ReliabilityAlertProcessor:
             )
             if claim.claimed:
                 if action == ActionType.SCALE_STAGING_DEPLOYMENT:
-                    desired = min(deployment.desired_replicas + 1, self.settings.max_temporary_replicas)
-                    result = await self.kubernetes.scale_staging_deployment(
+                    desired = min(
+                        deployment.desired_replicas + 1, self.settings.max_temporary_replicas
+                    )
+                    scale_result = await self.kubernetes.scale_staging_deployment(
                         namespace,
                         deployment_name,
                         replicas=desired,
@@ -376,7 +386,7 @@ class ReliabilityAlertProcessor:
                         incident=incident,
                         execution=claim.execution,
                         succeeded=True,
-                        result=result.to_dict(),
+                        result=scale_result.to_dict(),
                     )
                 elif action == ActionType.DELETE_UNHEALTHY_POD:
                     unhealthy = next((pod for pod in pods if not pod.ready), None)
@@ -390,22 +400,24 @@ class ReliabilityAlertProcessor:
                             error_code="NO_UNHEALTHY_POD_REMAINED",
                         )
                     else:
-                        result = await self.kubernetes.delete_pod(namespace, unhealthy.name)
+                        deletion_result = await self.kubernetes.delete_pod(
+                            namespace, unhealthy.name
+                        )
                         await finish_action_execution(
                             self.session,
                             incident=incident,
                             execution=claim.execution,
                             succeeded=True,
-                            result=result.to_dict(),
+                            result=deletion_result.to_dict(),
                         )
                 elif action == ActionType.REVERT_IMAGE:
-                    result = await self.gitops.revert_to_known_good(incident_id=incident.id)
+                    gitops_result = await self.gitops.revert_to_known_good(incident_id=incident.id)
                     await finish_action_execution(
                         self.session,
                         incident=incident,
                         execution=claim.execution,
                         succeeded=True,
-                        result=result.model_dump(mode="json"),
+                        result=gitops_result.model_dump(mode="json"),
                     )
             proposal.status = claim.execution.status
         await change_incident_state(

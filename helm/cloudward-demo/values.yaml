@@ -8,6 +8,7 @@ image:
   pullPolicy: IfNotPresent
 
 release:
+  identifier: ""
   sourceCommit: ""
   sbomReference: ""
   securityScan: ""
@@ -28,6 +29,26 @@ podLabels: {}
 
 demoTarget:
   enabled: true
+
+demoControlAuth:
+  required: false
+  existingSecret: ""
+  key: token
+
+# Only these exact read-only paths may be attached to the shared public ALB.
+# Failure-control and security-scenario paths are intentionally absent.
+publicRoute:
+  enabled: false
+  gatewayName: cloudward-public
+  gatewayNamespace: cloudward-ingress
+  sectionName: http
+  hostnames: []
+  paths:
+    - /
+    - /health/live
+    - /health/ready
+    - /metadata
+    - /demo/work
 
 telemetry:
   environment: staging

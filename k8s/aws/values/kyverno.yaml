@@ -1,0 +1,51 @@
+crds:
+  install: true
+
+admissionController:
+  replicas: 2
+  nodeSelector:
+    cloudward.io/capacity-class: system
+  container:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 192Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+backgroundController:
+  replicas: 1
+  nodeSelector:
+    cloudward.io/capacity-class: system
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+cleanupController:
+  replicas: 1
+  nodeSelector:
+    cloudward.io/capacity-class: system
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 192Mi
+
+reportsController:
+  replicas: 1
+  nodeSelector:
+    cloudward.io/capacity-class: system
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 192Mi

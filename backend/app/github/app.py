@@ -6,7 +6,7 @@ import asyncio
 import base64
 import binascii
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -110,16 +110,6 @@ class GitHubInstallationTokenProvider:
         self._cached = None
 
 
-class CallableAppJWTSource:
-    """Adapter for an externally managed short-lived RS256 App-JWT signer."""
-
-    def __init__(self, supplier: Callable[[], Awaitable[SecretStr]]) -> None:
-        self._supplier = supplier
-
-    async def get_app_jwt(self) -> SecretStr:
-        return await self._supplier()
-
-
 class RS256AppJWTSource:
     """Create the short-lived RS256 bearer used only to mint installation tokens."""
 
@@ -180,8 +170,10 @@ class GitHubAppClient:
         repository = self._policy.require_read(repository)
         _require_sha(sha)
         payload = await self._request("GET", f"/repos/{repository}/commits/{sha}")
-        commit = payload.get("commit") if isinstance(payload.get("commit"), dict) else {}
-        author = commit.get("author") if isinstance(commit.get("author"), dict) else {}
+        commit_payload = payload.get("commit")
+        commit: dict[str, Any] = commit_payload if isinstance(commit_payload, dict) else {}
+        author_payload = commit.get("author")
+        author: dict[str, Any] = author_payload if isinstance(author_payload, dict) else {}
         message = redact_text(str(commit.get("message", "")))[:1000]
         committed_at = _parse_datetime(author.get("date"))
         try:
@@ -205,7 +197,8 @@ class GitHubAppClient:
         _require_sha(base_sha)
         _require_sha(head_sha)
         payload = await self._request("GET", f"/repos/{repository}/compare/{base_sha}...{head_sha}")
-        raw_files = payload.get("files") if isinstance(payload.get("files"), list) else []
+        files_payload = payload.get("files")
+        raw_files: list[Any] = files_payload if isinstance(files_payload, list) else []
         files: list[FileDiffEvidence] = []
         for item in raw_files[:20]:
             if not isinstance(item, dict):
@@ -305,7 +298,8 @@ class GitHubAppClient:
         payload = await self._request(
             "PUT", f"/repos/{repository}/contents/{quote(path, safe='/')}", json=body
         )
-        commit = payload.get("commit") if isinstance(payload.get("commit"), dict) else {}
+        commit_payload = payload.get("commit")
+        commit: dict[str, Any] = commit_payload if isinstance(commit_payload, dict) else {}
         sha = commit.get("sha")
         if not isinstance(sha, str):
             raise CloudWardError(
@@ -406,9 +400,7 @@ def _require_branch(value: str) -> None:
         or "//" in value
         or value.endswith(".lock")
     ):
-        raise CloudWardError(
-            "GITHUB_REF_INVALID", "GitHub branch name is invalid", status_code=422
-        )
+        raise CloudWardError("GITHUB_REF_INVALID", "GitHub branch name is invalid", status_code=422)
 
 
 def _parse_datetime(value: Any) -> datetime | None:

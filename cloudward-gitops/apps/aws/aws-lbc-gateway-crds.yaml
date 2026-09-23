@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudward-aws-lbc-gateway-crds
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  project: cloudward-aws-platform
+  source:
+    repoURL: https://github.com/kubernetes-sigs/aws-load-balancer-controller.git
+    targetRevision: v2.15.0
+    path: config/crd/gateway
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

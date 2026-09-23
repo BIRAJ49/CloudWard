@@ -15,9 +15,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 cloudward \
     && useradd --system --uid 10001 --gid cloudward --home-dir /nonexistent --shell /usr/sbin/nologin cloudward \
-    && apt-get update \
-    && apt-get install --yes --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir uv==0.12.3
 
 COPY backend/pyproject.toml backend/uv.lock ./

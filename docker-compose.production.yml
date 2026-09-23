@@ -1,0 +1,89 @@
+name: cloudward
+
+services:
+  nginx:
+    image: ${CLOUDWARD_NGINX_IMAGE:?set an immutable CloudWard Nginx image reference}
+    build: null
+    ports: !override
+      - "0.0.0.0:443:8443"
+    environment:
+      CLOUDWARD_ORIGIN_SERVER_NAME: ${CLOUDWARD_ORIGIN_SERVER_NAME:?set the Cloudflare origin hostname}
+      NGINX_ENVSUBST_FILTER: ^CLOUDWARD_ORIGIN_SERVER_NAME$
+    volumes:
+      - ./docker/nginx/production.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${CLOUDWARD_ORIGIN_CERT_PATH:?set origin certificate path}:/etc/nginx/tls/origin.crt:ro
+      - ${CLOUDWARD_ORIGIN_KEY_PATH:?set origin private key path}:/etc/nginx/tls/origin.key:ro
+      - ${CLOUDFLARE_ORIGIN_PULL_CA_PATH:?set authenticated-origin-pull CA path}:/etc/nginx/tls/cloudflare-origin-pull-ca.pem:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/nginx-health"]
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  frontend:
+    image: ${CLOUDWARD_FRONTEND_IMAGE:?set an immutable CloudWard frontend image reference}
+    build: null
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  api:
+    image: ${CLOUDWARD_API_IMAGE:?set an immutable CloudWard API image reference}
+    build: null
+    environment:
+      APP_ENV: production
+      DEV_AUTH_ENABLED: "false"
+      FRONTEND_URL: ${CLOUDWARD_PUBLIC_ORIGIN:?set the public HTTPS origin}
+      CORS_ORIGINS: ${CLOUDWARD_PUBLIC_ORIGIN:?set the public HTTPS origin}
+      GITHUB_REDIRECT_URI: ${CLOUDWARD_PUBLIC_ORIGIN:?set the public HTTPS origin}/api/v1/auth/github/callback
+      KUBECONFIG: /run/cloudward/eks-kubeconfig
+      KUBERNETES_CONTEXT: cloudward-eks
+      KUBERNETES_ALLOWED_NAMESPACES: cloudward-staging
+      LOCAL_GITOPS_WRITE_ENABLED: "false"
+      INVENTORY_BOOTSTRAP_ENABLED: "true"
+      INVENTORY_CLUSTER_NAME: cloudward-aws-eu-north-1
+      INVENTORY_CLUSTER_CONTEXT: cloudward-eks
+      INVENTORY_CLUSTER_ENVIRONMENT: staging
+      INVENTORY_AWS_REGION: eu-north-1
+    volumes: !override
+      - ./runbooks:/app/runbooks:ro
+      - ${CLOUDWARD_EKS_KUBECONFIG_PATH:?set the host kubeconfig path}:/run/cloudward/eks-kubeconfig:ro
+    logging:
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  worker:
+    image: ${CLOUDWARD_WORKER_IMAGE:?set an immutable CloudWard worker image reference}
+    build: null
+    environment:
+      APP_ENV: production
+      KUBECONFIG: /run/cloudward/eks-kubeconfig
+      KUBERNETES_CONTEXT: cloudward-eks
+      KUBERNETES_ALLOWED_NAMESPACES: cloudward-staging
+    volumes:
+      - ${CLOUDWARD_EKS_KUBECONFIG_PATH:?set the host kubeconfig path}:/run/cloudward/eks-kubeconfig:ro
+    logging:
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  postgres:
+    logging:
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  redis:
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  opa:
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "5"

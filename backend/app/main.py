@@ -12,14 +12,15 @@ from redis.asyncio import Redis
 
 from app.api.health import router as health_router
 from app.api.router import api_router
-from app.clusters.bootstrap import seed_development_inventory
+from app.clusters.bootstrap import seed_configured_inventory, seed_development_inventory
 from app.config import Settings, get_settings
 from app.db.session import SessionFactory, close_database
 from app.errors import install_error_handlers
 from app.logging import configure_logging
-from app.middleware import RequestContextMiddleware
 from app.metrics import APIMetricsMiddleware, metrics_response
+from app.middleware import RequestContextMiddleware
 from app.runbooks import RunbookLoader
+from app.security.csrf import CSRFProtectionMiddleware
 from app.security.headers import SecurityHeadersMiddleware
 from app.tasks import create_task_publisher
 
@@ -44,6 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.runbooks.load()
         async with SessionFactory() as session:
             await seed_development_inventory(session, resolved_settings)
+            await seed_configured_inventory(session, resolved_settings)
         app.state.task_publisher = create_task_publisher(resolved_settings)
         yield
         await app.state.redis.aclose()
@@ -51,18 +53,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="CloudWard API",
-        description="Controlled local reliability, runtime-security, AI diagnosis, and FinOps control plane",
-        version="0.3.0",
+        description="Controlled reliability, runtime-security, AI diagnosis, and FinOps control plane",
+        version="0.4.0",
         lifespan=lifespan,
         docs_url="/docs" if resolved_settings.app_env != "production" else None,
         redoc_url=None,
     )
     app.state.settings = resolved_settings
+    app.add_middleware(CSRFProtectionMiddleware, settings=resolved_settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=resolved_settings.cors_origin_list,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=[
             "Content-Type",
             "X-Request-ID",

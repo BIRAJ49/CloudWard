@@ -21,8 +21,8 @@ router = APIRouter(tags=["health"])
 async def _database_check() -> dict[str, Any]:
     started = time.monotonic()
     try:
-        async with engine.connect() as connection:
-            await asyncio.wait_for(connection.execute(text("SELECT 1")), timeout=3)
+        async with asyncio.timeout(3), engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
         return {"status": "up", "latency_ms": round((time.monotonic() - started) * 1000, 2)}
     except Exception as exc:
         return {"status": "down", "error": type(exc).__name__}

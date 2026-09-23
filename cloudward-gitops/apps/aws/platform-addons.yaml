@@ -1,0 +1,127 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cloudward-aws-addons
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - name: cilium
+            namespace: kube-system
+            chartRepo: https://helm.cilium.io/
+            chart: cilium
+            version: 1.20.0
+            releaseName: cilium
+            valuesFile: cilium.yaml
+          - name: tetragon
+            namespace: tetragon
+            chartRepo: https://helm.cilium.io/
+            chart: tetragon
+            version: 1.7.0
+            releaseName: tetragon
+            valuesFile: tetragon.yaml
+          - name: kyverno
+            namespace: kyverno
+            chartRepo: https://kyverno.github.io/kyverno/
+            chart: kyverno
+            version: 3.8.2
+            releaseName: kyverno
+            valuesFile: kyverno.yaml
+          - name: karpenter
+            namespace: kube-system
+            chartRepo: public.ecr.aws/karpenter
+            chart: karpenter
+            version: 1.14.0
+            releaseName: karpenter
+            valuesFile: karpenter.yaml
+          - name: aws-load-balancer-controller
+            namespace: kube-system
+            chartRepo: https://aws.github.io/eks-charts
+            chart: aws-load-balancer-controller
+            version: 1.15.0
+            releaseName: aws-load-balancer-controller
+            valuesFile: aws-load-balancer-controller.yaml
+          - name: kube-prometheus-stack
+            namespace: observability
+            chartRepo: https://prometheus-community.github.io/helm-charts
+            chart: kube-prometheus-stack
+            version: 88.5.3
+            releaseName: kube-prometheus-stack
+            valuesFile: kube-prometheus-stack.yaml
+          - name: loki
+            namespace: observability
+            chartRepo: https://grafana.github.io/helm-charts
+            chart: loki
+            version: 18.11.0
+            releaseName: loki
+            valuesFile: loki.yaml
+          - name: tempo
+            namespace: observability
+            chartRepo: https://grafana.github.io/helm-charts
+            chart: tempo
+            version: 2.2.4
+            releaseName: tempo
+            valuesFile: tempo.yaml
+          - name: otel-collector
+            namespace: observability
+            chartRepo: https://open-telemetry.github.io/opentelemetry-helm-charts
+            chart: opentelemetry-collector
+            version: 0.170.0
+            releaseName: otel-collector
+            valuesFile: otel-collector.yaml
+          - name: opencost
+            namespace: opencost
+            chartRepo: https://opencost.github.io/opencost-helm-chart
+            chart: opencost
+            version: 2.2.7
+            releaseName: opencost
+            valuesFile: opencost.yaml
+          - name: chaos-mesh
+            namespace: chaos-mesh
+            chartRepo: https://charts.chaos-mesh.org
+            chart: chaos-mesh
+            version: 2.8.4
+            releaseName: chaos-mesh
+            valuesFile: chaos-mesh.yaml
+  template:
+    metadata:
+      name: 'cloudward-aws-{{ .name }}'
+      labels:
+        app.kubernetes.io/part-of: cloudward
+        cloudward.io/platform-addon: 'true'
+    spec:
+      project: cloudward-aws-platform
+      sources:
+        - repoURL: '{{ .chartRepo }}'
+          chart: '{{ .chart }}'
+          targetRevision: '{{ .version }}'
+          helm:
+            releaseName: '{{ .releaseName }}'
+            valueFiles:
+              - '$values/k8s/aws/values/{{ .valuesFile }}'
+        - repoURL: https://github.com/biraj49/CloudWard.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{ .namespace }}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+          - CreateNamespace=false
+          - PruneLast=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m

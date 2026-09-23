@@ -17,8 +17,35 @@ release:
 podLabels:
   cloudward.io/environment: staging
 
+demoControlAuth:
+  required: true
+  existingSecret: cloudward-demo-control
+  key: token
+
+publicRoute:
+  enabled: true
+  gatewayName: cloudward-public
+  gatewayNamespace: cloudward-ingress
+  sectionName: http
+  hostnames: []
+  paths:
+    - /
+    - /health/live
+    - /health/ready
+    - /metadata
+    - /demo/work
+
 telemetry:
   environment: staging
+
+nodeSelector:
+  cloudward.io/capacity-class: demo
+
+tolerations:
+  - key: cloudward.io/capacity-class
+    operator: Equal
+    value: demo
+    effect: NoSchedule
 
 resources:
   requests:

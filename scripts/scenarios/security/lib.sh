@@ -25,7 +25,19 @@ demo_pod() {
 trigger_demo_path() {
   local pod="$1"
   local path="$2"
-  kubectl get --raw "/api/v1/namespaces/cloudward-staging/pods/${pod}:8080/proxy${path}" >/dev/null
+  kubectl -n cloudward-staging exec "$pod" -- python -c '
+import os
+import sys
+import urllib.request
+
+request = urllib.request.Request(
+    "http://127.0.0.1:8080" + sys.argv[1],
+    headers={"X-CloudWard-Demo-Token": os.getenv("DEMO_CONTROL_TOKEN", "")},
+)
+with urllib.request.urlopen(request, timeout=5) as response:
+    if response.status != 200:
+        raise SystemExit(f"demo trigger returned HTTP {response.status}")
+' "$path" >/dev/null
 }
 
 wait_for_security_event() {
@@ -64,4 +76,3 @@ remove_and_verify_containment() {
     "$SECURITY_API_BASE/security/events/$event_id/containment/remove" |
     jq -e '.status == "REMOVED" and .verification.success == true' >/dev/null
 }
-

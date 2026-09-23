@@ -1,0 +1,97 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: cloudward-critical
+  labels:
+    app.kubernetes.io/part-of: cloudward
+spec:
+  template:
+    metadata:
+      labels:
+        cloudward.io/capacity-class: critical
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: cloudward-critical
+      taints:
+        - key: cloudward.io/capacity-class
+          value: critical
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+        - key: karpenter.k8s.aws/instance-family
+          operator: In
+          values: ["t3", "t3a", "m6i", "m6a"]
+        - key: karpenter.k8s.aws/instance-size
+          operator: In
+          values: ["medium", "large", "xlarge"]
+      expireAfter: 720h
+  limits:
+    cpu: "16"
+    memory: 32Gi
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 10m
+    budgets:
+      - nodes: "1"
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: cloudward-demo
+  labels:
+    app.kubernetes.io/part-of: cloudward
+spec:
+  weight: 20
+  template:
+    metadata:
+      labels:
+        cloudward.io/capacity-class: demo
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: cloudward-demo
+      taints:
+        - key: cloudward.io/capacity-class
+          value: demo
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        # Karpenter prefers Spot and falls back to On-Demand when Spot offerings
+        # are unavailable; both are deliberately allowed for demo continuity.
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+        - key: karpenter.k8s.aws/instance-family
+          operator: In
+          values: ["t3", "t3a", "c6i", "c6a", "m6i", "m6a"]
+        - key: karpenter.k8s.aws/instance-size
+          operator: In
+          values: ["medium", "large", "xlarge"]
+      expireAfter: 336h
+  limits:
+    cpu: "32"
+    memory: 64Gi
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 5m
+    budgets:
+      - nodes: "25%"
+      - nodes: "0"
+        schedule: "0 8 * * mon-fri"
+        duration: 10h

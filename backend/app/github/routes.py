@@ -134,9 +134,7 @@ async def create_incident_issue(
         body=issue_body[:10_000],
         labels=payload.labels,
     )
-    result = await GitHubIssueService(
-        session, build_github_app_client(settings)
-    ).create_once(
+    result = await GitHubIssueService(session, build_github_app_client(settings)).create_once(
         incident_id=incident.id,
         correlation_id=incident.correlation_id,
         repository=payload.repository,

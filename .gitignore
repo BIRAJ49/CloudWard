@@ -6,7 +6,23 @@
 *.key
 *.p12
 *.pfx
+*.p8
+*.jks
+*.keystore
 kubeconfig*
+**/.kube/
+**/.aws/
+*.tfvars
+!*.tfvars.example
+*.tfplan
+backend.hcl
+!backend.hcl.example
+
+# Local security-review working notes (keep findings private until remediated)
+docs/security/codebase-review-2026-09-21.md
+docs/security/dependency-provenance-2026-09-22.md
+docs/security/endpoint-authorization-2026-09-22.md
+docs/security/requested-security-audit-2026-09-22.md
 
 # Python
 __pycache__/
@@ -45,4 +61,3 @@ tmp/
 *.sqlite3
 postgres-data/
 redis-data/
-

@@ -60,4 +60,35 @@ describe("authenticated SSE reconnect", () => {
     expect(first.closed).toBe(true);
     expect(FakeEventSource.instances[1].url).toContain("last_event_id=42");
   });
+
+  it("ignores duplicate and malformed frames without poisoning the cursor", () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const received = vi.fn();
+    render(<Harness onEvent={received} />);
+    const source = FakeEventSource.instances[0];
+    act(() => {
+      source.emit("message", { incident_id: "first" }, "10");
+      source.emit("message", { incident_id: "duplicate" }, "10");
+      source.emit("message", { incident_id: "stale" }, "9");
+      source.onmessage?.(new MessageEvent("message", { data: "not json", lastEventId: "999" }));
+      source.onmessage?.(new MessageEvent("message", { data: "null", lastEventId: "999" }));
+      source.emit("message", { incident_id: "next" }, "11");
+    });
+    expect(received).toHaveBeenCalledTimes(2);
+    expect(received).toHaveBeenLastCalledWith({ incident_id: "next" });
+    expect(window.sessionStorage.getItem("cloudward.control-plane.last-event-id")).toBe("11");
+  });
+
+  it("dispatches cluster observations and incident evidence events", () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const received = vi.fn();
+    render(<Harness onEvent={received} />);
+    const source = FakeEventSource.instances[0];
+    act(() => {
+      source.emit("cluster.observation", { type: "cluster.observation", cluster_id: "cluster-1" }, "20");
+      source.emit("incident.evidence_added", { type: "incident.evidence_added", incident_id: "incident-1" }, "21");
+    });
+    expect(received).toHaveBeenCalledTimes(2);
+    expect(received).toHaveBeenLastCalledWith(expect.objectContaining({ incident_id: "incident-1" }));
+  });
 });
